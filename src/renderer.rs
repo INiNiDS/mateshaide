@@ -1,0 +1,206 @@
+use crate::camera::Camera;
+use crate::render_pipeline::RenderPipeline;
+use std::sync::Arc;
+use tracing::warn;
+use wgpu::CurrentSurfaceTexture;
+use wgpu::util::DeviceExt;
+use winit::window::Window;
+
+/// Main struct for rendering
+pub struct Renderer {
+    window: Arc<Window>,
+    instance: wgpu::Instance,
+    surface: wgpu::Surface<'static>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+    render_pipeline: RenderPipeline,
+    size: winit::dpi::PhysicalSize<u32>,
+    pub camera: Camera,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
+}
+
+impl Renderer {
+    pub async fn new(window: Arc<Window>) -> Self {
+        let instance = wgpu::Instance::default();
+        let surface = instance
+            .create_surface(window.clone())
+            .expect("Failed to create surface");
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+                apply_limit_buckets: false,
+            })
+            .await
+            .expect("Failed to find an appropriate adapter");
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default())
+            .await
+            .expect("Failed to create device");
+
+        let size = window.inner_size();
+        let surf_caps = surface.get_capabilities(&adapter);
+        let present_mode = if surf_caps
+            .present_modes
+            .contains(&wgpu::PresentMode::Mailbox)
+        {
+            wgpu::PresentMode::Mailbox
+        } else {
+            wgpu::PresentMode::Fifo
+        };
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surf_caps.formats[0],
+            color_space: Default::default(),
+            width: size.width,
+            height: size.height,
+            present_mode,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: surf_caps.alpha_modes[0],
+            view_formats: vec![],
+        };
+        surface.configure(&device, &config);
+
+        let camera = Camera::new(size.width as f32, size.height as f32);
+        let uniform = camera.uniform();
+
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Camera Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Camera Bind Group"),
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
+
+        let render_pipeline = RenderPipeline::new(&device, &config, &camera_bind_group_layout);
+        Self {
+            instance,
+            surface,
+            device,
+            queue,
+            config,
+            window,
+            size,
+            render_pipeline,
+            camera,
+            camera_buffer,
+            camera_bind_group,
+        }
+    }
+
+    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        if new_size.width > 0 && new_size.height > 0 {
+            self.size = new_size;
+            self.config.width = new_size.width;
+            self.config.height = new_size.height;
+            self.surface.configure(&self.device, &self.config);
+            self.camera
+                .resize(new_size.width as f32, new_size.height as f32);
+        }
+    }
+
+    pub fn recreate_surface(&mut self) {
+        warn!("Recreating surface due to lost surface texture");
+
+        let new_surface = self
+            .instance
+            .create_surface(self.window.clone())
+            .expect("Failed to recreate surface");
+
+        new_surface.configure(&self.device, &self.config);
+
+        self.surface = new_surface;
+    }
+
+    pub fn redraw(&mut self) {
+        let uniform = self.camera.uniform();
+        self.queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
+
+        let output = match self.surface.get_current_texture() {
+            CurrentSurfaceTexture::Success(texture) => texture,
+            CurrentSurfaceTexture::Suboptimal(texture) => {
+                self.resize(self.size);
+                texture
+            }
+            CurrentSurfaceTexture::Timeout => {
+                warn!("Timeout while acquiring next surface texture");
+                return;
+            }
+            CurrentSurfaceTexture::Occluded => {
+                return;
+            }
+            CurrentSurfaceTexture::Outdated => {
+                self.resize(self.size);
+                return;
+            }
+            CurrentSurfaceTexture::Lost => {
+                warn!("Surface texture is lost");
+                self.recreate_surface();
+                return;
+            }
+            CurrentSurfaceTexture::Validation => {
+                panic!("Validation error");
+            }
+        };
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.94,
+                            g: 0.945,
+                            b: 0.955,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.render_pipeline
+                .draw(&mut render_pass, &self.camera_bind_group);
+        }
+        self.queue.submit(Some(encoder.finish()));
+        self.queue.present(output);
+    }
+}
