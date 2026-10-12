@@ -1,31 +1,57 @@
 pub mod camera;
+pub mod canvas;
 pub mod engine;
+pub mod input;
 pub mod render_pipeline;
 pub mod renderer;
+pub mod utils;
 
 use crate::engine::Engine;
+use crate::input::{InputManager, InputUpdate, Shortcut};
 use anyhow::Result;
 use glam::Vec2;
 use std::sync::Arc;
 use tracing::info;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::KeyCode;
 use winit::window::{Window, WindowId};
 
 /// Main application struct.
 struct App {
     window: Option<Arc<Window>>,
     engine: Option<Engine>,
-    cursor_pos: Vec2,
+    input: InputManager,
 }
 
 impl App {
     fn new() -> Self {
+        let mut input = InputManager::new();
+        input.register_action("zoom_in", |engine: &mut Engine| {
+            engine.canvas.zoom_at_center(1.0)
+        });
+        input.register_action("zoom_out", |engine: &mut Engine| {
+            engine.canvas.zoom_at_center(-1.0)
+        });
+        input.register_action("reset_view", |engine: &mut Engine| {
+            engine.canvas.reset_view()
+        });
+
+        input.bind(Shortcut::key(KeyCode::Equal).ctrl(), "zoom_in");
+        input.bind(Shortcut::key(KeyCode::NumpadAdd).ctrl(), "zoom_in");
+        input.bind(Shortcut::key(KeyCode::Equal).ctrl().shift(), "zoom_in");
+
+        input.bind(Shortcut::key(KeyCode::Minus).ctrl(), "zoom_out");
+        input.bind(Shortcut::key(KeyCode::NumpadSubtract).ctrl(), "zoom_out");
+
+        input.bind(Shortcut::key(KeyCode::Digit0).ctrl(), "reset_view");
+        input.bind(Shortcut::key(KeyCode::Numpad0).ctrl(), "reset_view");
+
         Self {
             window: None,
             engine: None,
-            cursor_pos: Vec2::ZERO,
+            input,
         }
     }
 }
@@ -50,6 +76,7 @@ impl ApplicationHandler for App {
         info!("wgpu context and window successfully initialized");
     }
 
+    // High Complexity
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -68,6 +95,7 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 info!("Window {:?} close requested", window_id);
                 event_loop.exit();
+                return;
             }
             WindowEvent::RedrawRequested => {
                 let is_gliding = engine.update();
@@ -75,45 +103,79 @@ impl ApplicationHandler for App {
                 if is_gliding {
                     window.request_redraw();
                 }
+                return;
             }
             WindowEvent::Resized(new_size) => {
                 if new_size.width > 0 && new_size.height > 0 {
                     engine.resize(new_size.width, new_size.height);
                     window.request_redraw();
                 }
+                return;
             }
-            WindowEvent::CursorMoved { position, .. } => {
-                let new_pos = Vec2::new(position.x as f32, position.y as f32);
-                let delta = new_pos - self.cursor_pos;
-                self.cursor_pos = new_pos;
-                if  engine.is_panning() {
-                    engine.track_pan(delta);
-                    window.request_redraw();
-                }
+            _ => {}
+        }
+
+        let update = self.input.process_event(&event, engine);
+
+        match update {
+            InputUpdate::ActionExecuted => {
+                window.request_redraw();
             }
-            WindowEvent::MouseInput { state, button, .. } => {
-                if button == winit::event::MouseButton::Right {
+            InputUpdate::MouseButton { button, state } => {
+                if button == MouseButton::Right || button == MouseButton::Middle {
                     match state {
                         ElementState::Pressed => {
-                            engine.start_pan();
+                            if !engine.canvas.is_panning() {
+                                engine.canvas.start_pan();
+                            }
                         }
                         ElementState::Released => {
-                            engine.end_pan();
-                            window.request_redraw();
+                            let still_holding = self.input.is_mouse_down(MouseButton::Middle)
+                                || self.input.is_mouse_down(MouseButton::Right);
+                            if !still_holding {
+                                engine.canvas.end_pan();
+                                engine.reset_frame_time();
+                                window.request_redraw();
+                            }
                         }
                     }
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } => {
-                // TODO: Make zoom with Ctrl + MouseWheel instead of just MouseWheel (and Ctrl + +, Ctrl + -)
-                let scroll_data = match delta {
-                    winit::event::MouseScrollDelta::LineDelta(_, y) => y,
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => (pos.y as f32) * 0.05,
-                };
-                engine.zoom(self.cursor_pos, scroll_data);
+            InputUpdate::MouseWheel { delta } => {
+                if self.input.is_ctrl() {
+                    engine.canvas.zoom(self.input.cursor_position(), delta.y)
+                } else {
+                    let pan_delta = if self.input.is_shift() {
+                        let x = if delta.x.abs() > 0.001 {
+                            delta.x
+                        } else {
+                            delta.y
+                        };
+                        Vec2::new(x * 32.0, 0.0)
+                    } else {
+                        Vec2::new(delta.x * 32.0, delta.y * 32.0)
+                    };
+                    engine.canvas.pan(pan_delta);
+                }
                 window.request_redraw();
             }
-            _ => {}
+            InputUpdate::CursorMoved { delta, .. } => {
+                let is_panning = self.input.is_mouse_down(MouseButton::Right)
+                    || self.input.is_mouse_down(MouseButton::Middle);
+                if is_panning {
+                    engine.canvas.track_pan(delta);
+                    window.request_redraw();
+                }
+            }
+            InputUpdate::FocusLost => {
+                if engine.canvas.is_panning() {
+                    engine.canvas.cancel_pan();
+                }
+
+                engine.reset_frame_time();
+                window.request_redraw();
+            }
+            InputUpdate::None => {}
         }
     }
 }
