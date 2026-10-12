@@ -5,11 +5,10 @@ use glam::{Mat4, Vec2, Vec4};
 pub struct CameraUniform {
     pub view_proj: Mat4,
     pub inverse_view_proj: Mat4,
-    // x = zoom, y/z/w = резерв/паддинг.
-    // Гарантирует ровно 16 байт без сюрпризов со спецификацией WGSL.
     pub params: Vec4,
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct Camera {
     pub offset: Vec2,
     pub zoom: f32,

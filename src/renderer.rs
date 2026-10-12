@@ -1,4 +1,4 @@
-use crate::camera::Camera;
+use crate::camera::CameraUniform;
 use crate::render_pipeline::RenderPipeline;
 use std::sync::Arc;
 use tracing::warn;
@@ -16,13 +16,12 @@ pub struct Renderer {
     config: wgpu::SurfaceConfiguration,
     render_pipeline: RenderPipeline,
     size: winit::dpi::PhysicalSize<u32>,
-    pub camera: Camera,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 }
 
 impl Renderer {
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new(window: Arc<Window>, uniform: CameraUniform) -> Self {
         let instance = wgpu::Instance::default();
         let surface = instance
             .create_surface(window.clone())
@@ -55,17 +54,14 @@ impl Renderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surf_caps.formats[0],
             color_space: Default::default(),
-            width: size.width,
-            height: size.height,
+            width: size.width.max(1),
+            height: size.height.max(1),
             present_mode,
             desired_maximum_frame_latency: 2,
             alpha_mode: surf_caps.alpha_modes[0],
             view_formats: vec![],
         };
         surface.configure(&device, &config);
-
-        let camera = Camera::new(size.width as f32, size.height as f32);
-        let uniform = camera.uniform();
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
@@ -105,7 +101,6 @@ impl Renderer {
             window,
             size,
             render_pipeline,
-            camera,
             camera_buffer,
             camera_bind_group,
         }
@@ -117,8 +112,6 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            self.camera
-                .resize(new_size.width as f32, new_size.height as f32);
         }
     }
 
@@ -135,8 +128,7 @@ impl Renderer {
         self.surface = new_surface;
     }
 
-    pub fn redraw(&mut self) {
-        let uniform = self.camera.uniform();
+    pub fn redraw(&mut self, uniform: CameraUniform) {
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
 
