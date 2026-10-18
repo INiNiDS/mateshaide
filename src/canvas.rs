@@ -1,4 +1,5 @@
 use crate::camera::Camera;
+use crate::shape::ShapeInstance;
 use glam::Vec2;
 use std::collections::VecDeque;
 use std::time::Instant;
@@ -9,6 +10,7 @@ const VELOCITY_SAMPLE_WINDOW_SECS: f32 = 0.08;
 
 pub struct Canvas {
     pub camera: Camera,
+    pub instances: Vec<ShapeInstance>,
     pan_velocity: Vec2,
     pan_samples: VecDeque<(Instant, Vec2)>,
     is_panning: bool,
@@ -19,9 +21,14 @@ impl Canvas {
         Self {
             camera: Camera::new(width, height),
             pan_velocity: Vec2::ZERO,
+            instances: Vec::new(),
             pan_samples: VecDeque::with_capacity(64),
             is_panning: false,
         }
+    }
+
+    pub fn add_shape(&mut self, shape: ShapeInstance) {
+        self.instances.push(shape);
     }
 
     pub fn resize(&mut self, width: f32, height: f32) {
