@@ -63,3 +63,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
     return vec4<f32>(in.color.rgb, in.color.a * cover);
 }
+
+fn sd_hexagon(p: vec2<f32>, r: f32) -> f32 {
+    let k = vec3<f32>(-0.866025404, 0.5, 0.577350269);
+    var q = abs(p);
+    q = q - 2.0 * min(dot(k.xy, q), 0.0) * k.xy;
+    q = q - vec2<f32>(clamp(q.x, -k.z * r, k.z * r), r);
+    return length(q) * sign(q.y);
+}

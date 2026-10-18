@@ -6,6 +6,7 @@ pub mod input;
 pub mod palette;
 pub mod render_pipeline;
 pub mod renderer;
+pub mod shape;
 pub mod utils;
 
 use crate::engine::Engine;
