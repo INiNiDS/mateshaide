@@ -774,6 +774,7 @@ dependencies = [
  "nah",
  "pollster",
  "rustc-hash 2.1.3",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tracing-subscriber",
