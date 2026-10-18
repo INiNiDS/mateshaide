@@ -16,11 +16,11 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub async fn new(window: Arc<Window>) -> Result<Self, ShapeError> {
+    pub async fn new(window: Arc<Window>) -> Result<Self, EngineError> {
         let size = window.inner_size();
         let canvas = Canvas::new(size.width as f32, size.height as f32);
         let shapes: ShapeRegistry = ShapeRegistry::with_builtins()?;
-        let renderer = Renderer::new(window, canvas.camera.uniform(), &shapes).await;
+        let renderer = Renderer::new(window, canvas.camera.uniform(), &shapes).await?;
 
         Ok(Self {
             canvas,
@@ -31,6 +31,7 @@ impl Engine {
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))] // TODO: remove this when we have a proper test framework for wasm
     pub fn define_shape<F>(&mut self, define: F) -> Result<u32, ShapeError>
     where
         F: FnOnce(&mut ShapeRegistry) -> Result<u32, ShapeError>,
@@ -147,4 +148,12 @@ impl Engine {
     pub fn redo(&mut self) -> bool {
         self.canvas.redo()
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum EngineError {
+    #[error(transparent)]
+    Shape(#[from] ShapeError),
+    #[error(transparent)]
+    Renderer(#[from] crate::renderer::RendererError),
 }

@@ -1,4 +1,6 @@
 use crate::camera::CameraUniform;
+use crate::color::Color;
+use crate::palette;
 use crate::render_pipeline::RenderPipeline;
 use crate::shape::{ShapeInstance, ShapeRegistry};
 use std::sync::Arc;
@@ -6,8 +8,6 @@ use tracing::warn;
 use wgpu::CurrentSurfaceTexture;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
-use crate::color::Color;
-use crate::palette;
 
 const SWATCH_PX: f32 = 48.0;
 const OVERLAY_CAP: usize = 8; // For test (will remove)
@@ -36,11 +36,27 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub async fn new(window: Arc<Window>, uniform: CameraUniform, shapes: &ShapeRegistry) -> Self {
+    pub async fn new(
+        window: Arc<Window>,
+        uniform: CameraUniform,
+        shapes: &ShapeRegistry,
+    ) -> Result<Self, RendererError> {
         let instance = wgpu::Instance::default();
+
+        #[cfg(not(target_arch = "wasm32"))]
         let surface = instance
             .create_surface(window.clone())
-            .expect("Failed to create surface");
+            .map_err(|e| RendererError::Surface(e.to_string()))?;
+
+        #[cfg(target_arch = "wasm32")]
+        let surface = {
+            use winit::platform::web::WindowExtWebSys;
+            let canvas = window.canvas();
+            instance
+                .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
+                .map_err(|e| RendererError::Surface(e.to_string()))?
+        };
+
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -49,15 +65,20 @@ impl Renderer {
                 apply_limit_buckets: false,
             })
             .await
-            .expect("Failed to find an appropriate adapter");
+            .map_err(|e| RendererError::NoAdapter(e.to_string()))?;
+
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default())
             .await
-            .expect("Failed to create device");
+            .map_err(|e| RendererError::Device(e.to_string()))?;
 
         let size = window.inner_size();
         let surf_caps = surface.get_capabilities(&adapter);
 
+        #[cfg(target_arch = "wasm32")]
+        let format = surf_caps.formats[0];
+
+        #[cfg(not(target_arch = "wasm32"))]
         let format = surf_caps
             .formats
             .iter()
@@ -160,7 +181,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        Self {
+        Ok(Self {
             instance,
             surface,
             device,
@@ -177,9 +198,10 @@ impl Renderer {
             instance_capacity: initial_capacity,
             overlay_bind_group,
             overlay_instance_buffer,
-        }
+        })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn validate_wgsl(&self, wgsl: &str) -> Result<(), wgpu::Error> {
         let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let _module = self
@@ -206,10 +228,19 @@ impl Renderer {
     pub fn recreate_surface(&mut self) {
         warn!("Recreating surface due to lost surface texture");
 
+        #[cfg(not(target_arch = "wasm32"))]
         let new_surface = self
             .instance
             .create_surface(self.window.clone())
             .expect("Failed to recreate surface");
+
+        #[cfg(target_arch = "wasm32")]
+        let new_surface = {
+            use winit::platform::web::WindowExtWebSys;
+            self.instance
+                .create_surface(wgpu::SurfaceTarget::Canvas(self.window.canvas()))
+                .expect("Failed to recreate surface")
+        };
 
         new_surface.configure(&self.device, &self.config);
         self.surface = new_surface;
@@ -220,7 +251,7 @@ impl Renderer {
         uniform: CameraUniform,
         instances: &[ShapeInstance],
         shapes: &ShapeRegistry,
-        swatch: Option<Color>
+        swatch: Option<Color>,
     ) {
         if self.pipeline_version != shapes.version() {
             self.render_pipeline = RenderPipeline::new(
@@ -271,7 +302,8 @@ impl Renderer {
                 return;
             }
             CurrentSurfaceTexture::Validation => {
-                panic!("Validation error");
+                tracing::error!("Validation error while acquiring surface texture");
+                return;
             }
         };
 
@@ -367,7 +399,7 @@ fn build_swatch_instances(color: Color, width: u32, height: u32) -> Vec<ShapeIns
     let ihy = 2.0 * inner_half_px / h;
 
     let cx_px = w - SWATCH_MARGIN_PX - outer_half_px;
-    let cy_px =  SWATCH_MARGIN_PX + outer_half_px;
+    let cy_px = SWATCH_MARGIN_PX + outer_half_px;
 
     let cx = 2.0 * cx_px / w - 1.0;
     let cy = 1.0 - 2.0 * cy_px / h;
@@ -376,4 +408,14 @@ fn build_swatch_instances(color: Color, width: u32, height: u32) -> Vec<ShapeIns
         ShapeInstance::rect(cx - ohx, cy - ohy, ohx * 2.0, ohy * 2.0, palette::GRAY_700),
         ShapeInstance::rect(cx - ihx, cy - ihy, ihx * 2.0, ihy * 2.0, color),
     ]
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RendererError {
+    #[error("failed to create surface: {0}")]
+    Surface(String),
+    #[error("no WebGPU adapter available: {0}")]
+    NoAdapter(String),
+    #[error("failed to create device: {0}")]
+    Device(String),
 }
