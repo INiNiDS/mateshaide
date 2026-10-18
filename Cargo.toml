@@ -11,7 +11,7 @@ readme = "README.md"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "matesha_ide"
+name = "mateshaide"
 path = "src/main.rs"
 
 [dependencies]
