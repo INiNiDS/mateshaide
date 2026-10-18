@@ -79,6 +79,15 @@ impl TestSpawner {
         tracing::info!("test color mode: {:?}", self.color_mode);
     }
 
+    pub fn preview_color(&self) -> Option<Color> {
+        let spec = self.current?;
+        Some(match self.color_mode {
+            ColorMode::Cycle => TEST_PALETTE[self.palette_cursor % TEST_PALETTE.len()],
+            ColorMode::Fixed => fixed_color(spec),
+            ColorMode::Picked => self.picked_color,
+        })
+    }
+
     fn next_color(&mut self, spec: TestShapeSpec) -> Color {
         match self.color_mode {
             ColorMode::Cycle => {

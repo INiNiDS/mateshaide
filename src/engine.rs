@@ -46,10 +46,17 @@ impl Engine {
     }
 
     pub fn redraw(&mut self) {
+        let swatch = if self.test_spawner.active {
+            self.test_spawner.preview_color()
+        } else {
+            None
+        };
+
         self.renderer.redraw(
             self.canvas.camera.uniform(),
             &self.canvas.instances,
             &self.shapes,
+            swatch
         )
     }
 
