@@ -1,11 +1,10 @@
 [package]
 name = "matesha_ide"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.88"
-description = "GPU-accelerated 2D canvas (WebGPU demo)"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/USER/REPO"
+edition = "2024"
+description = "IDE For Mathematics."
+license = "AGPL-3.0"
+repository = "https://github.com/ininids/mateshaide"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
