@@ -1,17 +1,22 @@
 use crate::camera::Camera;
+use crate::shape::ShapeInstance;
 use glam::Vec2;
 use std::collections::VecDeque;
 use std::time::Instant;
 
 const STEP_PIXELS: f32 = 50.0;
-const FRICTION: f32 = 5.0;
+const FRICTION: f32 = 12.0;
 const VELOCITY_SAMPLE_WINDOW_SECS: f32 = 0.08;
+const HISTORY_CAP: usize = 200;
 
 pub struct Canvas {
     pub camera: Camera,
+    pub instances: Vec<ShapeInstance>,
     pan_velocity: Vec2,
     pan_samples: VecDeque<(Instant, Vec2)>,
     is_panning: bool,
+    history_undo: Vec<Vec<ShapeInstance>>,
+    history_redo: Vec<Vec<ShapeInstance>>,
 }
 
 impl Canvas {
@@ -19,9 +24,73 @@ impl Canvas {
         Self {
             camera: Camera::new(width, height),
             pan_velocity: Vec2::ZERO,
+            instances: Vec::new(),
             pan_samples: VecDeque::with_capacity(64),
             is_panning: false,
+            history_undo: vec![],
+            history_redo: vec![],
         }
+    }
+
+    pub fn add_shape(&mut self, shape: ShapeInstance) {
+        self.push_history();
+        self.instances.push(shape);
+    }
+
+    pub fn erase_at(&mut self, index: usize) -> bool {
+        if index >= self.instances.len() {
+            return false;
+        }
+
+        self.push_history();
+        self.instances.remove(index);
+        true
+    }
+
+    pub fn erase_at_world(&mut self, world: Vec2) -> bool {
+        let idx = self
+            .instances
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, shape)| shape.contains_world(world))
+            .map(|(i, _)| i);
+        match idx {
+            Some(i) => {
+                self.erase_at(i);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn undo(&mut self) -> bool {
+        if let Some(prev) = self.history_undo.pop() {
+            let current = std::mem::replace(&mut self.instances, prev);
+            self.history_redo.push(current);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn redo(&mut self) -> bool {
+        match self.history_redo.pop() {
+            Some(next) => {
+                let current = std::mem::replace(&mut self.instances, next);
+                self.history_undo.push(current);
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn push_history(&mut self) {
+        self.history_undo.push(self.instances.clone());
+        if self.history_undo.len() >= HISTORY_CAP {
+            self.history_undo.remove(0);
+        }
+        self.history_redo.clear();
     }
 
     pub fn resize(&mut self, width: f32, height: f32) {

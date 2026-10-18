@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>MateshaIDE</title>
+<style>
+    html, body {
+        margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+        background: #f0f1f4; color: #374151;
+        font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    canvas {
+        display: block;
+        width: 100vw !important;
+        height: 100vh !important;
+        outline: none;
+        touch-action: none;
+    }
+    #fallback {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 32px;
+        box-sizing: border-box;
+        text-align: center;
+    }
+    #fallback h1 { font-size: 22px; margin: 0 0 14px; color: #111827; font-weight: 600; }
+    #fallback p { margin: 0 0 12px; max-width: 580px; color: #4b5563; }
+    #fallback .buttons {
+        display: flex; gap: 12px; flex-wrap: wrap;
+        justify-content: center; margin: 16px 0 8px;
+    }
+    #fallback a.btn {
+        padding: 10px 20px; border-radius: 8px;
+        text-decoration: none; font-weight: 500;
+    }
+    #fallback a.primary { background: #6366f1; color: white; }
+    #fallback a.primary:hover { background: #4f46e5; }
+    #fallback a.secondary {
+        background: white; color: #4b5563; border: 1px solid #d1d5db;
+    }
+    #fallback a.secondary:hover { background: #f9fafb; }
+    #fallback .details {
+        margin-top: 24px; padding: 14px 18px;
+        background: #fef3c7; border: 1px solid #fbbf24;
+        border-radius: 8px; max-width: 580px;
+        color: #78350f; font-size: 13px; text-align: left;
+    }
+    #fallback .details b { display: block; margin-bottom: 6px; }
+    #fallback .details table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    #fallback .details td { padding: 3px 8px 3px 0; vertical-align: top; font-size: 13px; }
+    #fallback .details td:first-child { white-space: nowrap; color: #92400e; }
+    #fallback code {
+        background: rgba(0,0,0,0.08);
+        padding: 1px 5px; border-radius: 3px; font-size: 0.9em;
+    }
+    #fallback .reason {
+        margin-top: 20px; font-size: 12px; color: #9ca3af;
+        font-family: ui-monospace, Menlo, monospace;
+        word-break: break-word; max-width: 580px;
+    }
+</style>
+</head>
+<body>
+    <div id="fallback">
+        <h1>Your browser does not support WebGPU</h1>
+        <p>MateshaIDE renders graphics via <b>WebGPU</b>.
+           It is not available in your browser, so the demo will not run here.</p>
+        <p>Download the native version — it works everywhere:</p>
+        <div class="buttons">
+            <a class="primary btn" id="download-btn" href="#">Download</a>
+            <a class="secondary btn" id="repo-btn" href="#">Source code on GitHub</a>
+        </div>
+        <div class="details">
+            <b>Where WebGPU is enabled by default:</b>
+            <table>
+                <tr><td>Chrome / Edge 113+</td><td>Windows, macOS, ChromeOS; Android 121+; Linux starting with 144 (Intel Gen12+ only)</td></tr>
+                <tr><td>Safari 26+</td><td>macOS, iOS, iPadOS, visionOS</td></tr>
+                <tr><td>Firefox 141+</td><td>Windows only; macOS on Apple Silicon starting with 145+; Linux and Android not yet</td></tr>
+                <tr><td>Samsung Internet 25+</td><td>Android</td></tr>
+            </table>
+            <br>
+            On Linux, Chrome may require launching with <code>--enable-features=Vulkan</code>
+            and <code>--enable-unsafe-webgpu</code>.
+        </div>
+        <div class="reason" id="fallback-reason"></div>
+    </div>
+
+    <script type="module">
+        const REPO = "https://github.com/ininids/mateshaide";
+        const DOWNLOAD_URL = REPO + "/releases/latest";
+
+        document.getElementById("download-btn").href = DOWNLOAD_URL;
+        document.getElementById("repo-btn").href = REPO;
+
+        const fallbackEl = document.getElementById("fallback");
+        const reasonEl = document.getElementById("fallback-reason");
+
+        window.showFallback = (reason) => {
+            console.warn("[matesha] fallback:", reason);
+            if (reason) reasonEl.textContent = "Reason: " + reason;
+            fallbackEl.style.display = "flex";
+            document.querySelectorAll("canvas").forEach((c) => c.remove());
+        };
+
+        async function boot() {
+            if (!("gpu" in navigator)) {
+                window.showFallback("navigator.gpu is not available");
+                return;
+            }
+            try {
+                const adapter = await navigator.gpu.requestAdapter();
+                if (!adapter) {
+                    window.showFallback("navigator.gpu present, but requestAdapter() returned null");
+                    return;
+                }
+            } catch (e) {
+                window.showFallback("requestAdapter() threw: " + e);
+                return;
+            }
+
+            try {
+                const { default: init } = await import("./matesha_ide.js");
+                await init();
+            } catch (e) {
+                window.showFallback("wasm init failed: " + e);
+            }
+        }
+
+        boot();
+    </script>
+</body>
+</html>

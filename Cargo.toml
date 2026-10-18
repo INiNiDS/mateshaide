@@ -2,20 +2,37 @@
 name = "mateshaide"
 version = "0.1.0"
 edition = "2024"
-license = "AGPL-3"
+description = "IDE For Mathematics."
+license = "AGPL-3.0"
 repository = "https://github.com/ininids/mateshaide"
 readme = "README.md"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "matesha_ide"
+path = "src/main.rs"
+
 [dependencies]
-wgpu = "30.0.0"
+wgpu = "30.0.1"
 winit = "0.30.13"
-tracing = "0.1.44"
-tracing-subscriber = "0.3.23"
-anyhow = "1.0.103"
-tokio = "1.53.0"
+anyhow = "1"
+tracing = "0.1"
+thiserror = "2"
+
+glam = { version = "*", features = ["bytemuck"] }
+bytemuck = { version = "*", features = ["derive"] }
+hashbrown = "*"
+rustc-hash = "*"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pollster = "1.0.1"
-glam = { version = "0.34.1", features = ["bytemuck"] }
-bytemuck = "1.25.2"
-hashbrown = "0.17.1"
-rustc-hash = "2.1.3"
-nah = "0.1.2"
+tracing-subscriber = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+tracing-wasm = "0.2"
+web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement"] }
