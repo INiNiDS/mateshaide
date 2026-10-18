@@ -13,8 +13,7 @@ pub fn start() -> Result<(), JsValue> {
     let event_loop = EventLoop::new().map_err(|e| JsValue::from_str(&e.to_string()))?;
     event_loop.set_control_flow(ControlFlow::Wait);
 
-    event_loop
-        .spawn_app(App::new())
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    event_loop.spawn_app(App::new());
+
     Ok(())
 }

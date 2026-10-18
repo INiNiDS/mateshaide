@@ -1,6 +1,7 @@
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> anyhow::Result<()> {
-    use matesha_ide::App;
+    use mateshaide::App;
     use winit::event_loop::{ControlFlow, EventLoop};
 
     tracing_subscriber::fmt::init();

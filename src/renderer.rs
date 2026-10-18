@@ -51,7 +51,9 @@ impl Renderer {
         #[cfg(target_arch = "wasm32")]
         let surface = {
             use winit::platform::web::WindowExtWebSys;
-            let canvas = window.canvas();
+            let canvas = window
+                .canvas()
+                .ok_or_else(|| RendererError::Surface("window has no canvas".to_owned()))?;
             instance
                 .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
                 .map_err(|e| RendererError::Surface(e.to_string()))?
@@ -237,8 +239,12 @@ impl Renderer {
         #[cfg(target_arch = "wasm32")]
         let new_surface = {
             use winit::platform::web::WindowExtWebSys;
+            let canvas = self
+                .window
+                .canvas()
+                .expect("Failed to recreate surface: window has no canvas");
             self.instance
-                .create_surface(wgpu::SurfaceTarget::Canvas(self.window.canvas()))
+                .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
                 .expect("Failed to recreate surface")
         };
 
