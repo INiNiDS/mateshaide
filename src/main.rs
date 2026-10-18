@@ -258,6 +258,19 @@ fn initialize_input(input: &mut InputManager) {
 
     input.bind(Shortcut::key(KeyCode::Digit0).ctrl(), "reset_view");
     input.bind(Shortcut::key(KeyCode::Numpad0).ctrl(), "reset_view");
+
+    input.register_action("test_toggle_color_mode", |engine: &mut Engine| {
+        engine.toggle_test_color_mode();
+    });
+    input.bind(
+        Shortcut::key(KeyCode::Digit6).ctrl(),
+        "test_toggle_color_mode",
+    );
+
+    input.register_action("test_next_picked_color", |engine: &mut Engine| {
+        engine.next_test_picked_color();
+    });
+    input.bind(Shortcut::key(KeyCode::Digit7).ctrl(), "test_next_picked_color");
 }
 
 fn main() -> Result<()> {

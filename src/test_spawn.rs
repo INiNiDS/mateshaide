@@ -33,6 +33,7 @@ pub struct TestSpawner {
     pub current: Option<TestShapeSpec>,
     pub cursor_screen: Vec2,
     pub color_mode: ColorMode,
+    pub picked_color: Color,
     palette_cursor: usize,
 }
 
@@ -57,10 +58,37 @@ impl TestSpawner {
         };
 
         let world = canvas.camera.screen_to_world(self.cursor_screen);
-        let color = TEST_PALETTE[self.palette_cursor % TEST_PALETTE.len()];
+        let color = self.next_color(spec);
         self.palette_cursor = self.palette_cursor.wrapping_add(1);
 
         canvas.add_shape(build_instance(spec, world, color));
+    }
+
+    pub fn next_picked_color(&mut self) {
+        let idx = TEST_PALETTE
+            .iter()
+            .position(|&c| c == self.picked_color)
+            .map(|i| (i + 1) % TEST_PALETTE.len())
+            .unwrap_or(0);
+        self.picked_color = TEST_PALETTE[idx];
+        tracing::info!("test picked color: {:?}", self.picked_color);
+    }
+
+    pub fn toggle_color_mode(&mut self) {
+        self.color_mode = self.color_mode.cycle();
+        tracing::info!("test color mode: {:?}", self.color_mode);
+    }
+
+    fn next_color(&mut self, spec: TestShapeSpec) -> Color {
+        match self.color_mode {
+            ColorMode::Cycle => {
+                let color = TEST_PALETTE[self.palette_cursor % TEST_PALETTE.len()];
+                self.palette_cursor = self.palette_cursor.wrapping_add(1);
+                color
+            }
+            ColorMode::Fixed => fixed_color(spec),
+            ColorMode::Picked => self.picked_color,
+        }
     }
 }
 
@@ -90,15 +118,26 @@ fn build_instance(spec: TestShapeSpec, world: Vec2, color: Color) -> ShapeInstan
 pub enum ColorMode {
     #[default]
     Cycle,
-    Fixed
+    Fixed,
+    Picked,
 }
 
 impl ColorMode {
-    fn toggle(&self) -> Self {
+    fn cycle(&self) -> Self {
         match self {
             ColorMode::Cycle => ColorMode::Fixed,
-            ColorMode::Fixed => ColorMode::Cycle,
+            ColorMode::Fixed => ColorMode::Picked,
+            ColorMode::Picked => ColorMode::Cycle,
         }
     }
 }
 
+fn fixed_color(spec: TestShapeSpec) -> Color {
+    match spec.name {
+        "rect" => palette::BLUE_500,
+        "circle" => palette::GREEN_500,
+        "hexagon" => palette::VIOLET_500,
+        "rounded_rect" => palette::AMBER_500,
+        _ => palette::ACCENT,
+    }
+}

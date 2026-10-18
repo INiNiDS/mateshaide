@@ -1,11 +1,11 @@
 use crate::canvas::Canvas;
 use crate::renderer::Renderer;
 use crate::shape::{ShapeError, ShapeRegistry};
+use crate::test_spawn::TestSpawner;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
-use winit::window::Window;
-use crate::test_spawn::TestSpawner; // For test
+use winit::window::Window; // For test
 
 pub struct Engine {
     pub canvas: Canvas,
@@ -49,7 +49,7 @@ impl Engine {
         self.renderer.redraw(
             self.canvas.camera.uniform(),
             &self.canvas.instances,
-            &self.shapes
+            &self.shapes,
         )
     }
 
@@ -99,5 +99,13 @@ impl Engine {
             return;
         }
         self.test_spawner.spawn(&mut self.canvas);
+    }
+
+    pub fn toggle_test_color_mode(&mut self) {
+        self.test_spawner.toggle_color_mode();
+    }
+
+    pub fn next_test_picked_color(&mut self) {
+        self.test_spawner.next_picked_color();
     }
 }
