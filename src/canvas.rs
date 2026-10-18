@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 const STEP_PIXELS: f32 = 50.0;
-const FRICTION: f32 = 5.0;
+const FRICTION: f32 = 12.0;
 const VELOCITY_SAMPLE_WINDOW_SECS: f32 = 0.08;
 
 pub struct Canvas {
