@@ -270,7 +270,28 @@ fn initialize_input(input: &mut InputManager) {
     input.register_action("test_next_picked_color", |engine: &mut Engine| {
         engine.next_test_picked_color();
     });
-    input.bind(Shortcut::key(KeyCode::Digit7).ctrl(), "test_next_picked_color");
+    input.bind(
+        Shortcut::key(KeyCode::Digit7).ctrl(),
+        "test_next_picked_color",
+    );
+
+    input.register_action("undo", |engine: &mut Engine| {
+        engine.undo();
+    });
+    input.register_action("redo", |engine: &mut Engine| {
+        engine.redo();
+    });
+
+    input.bind(Shortcut::key(KeyCode::KeyZ).ctrl(), "undo");
+    input.bind(Shortcut::key(KeyCode::KeyX).ctrl(), "redo");
+    input.bind(Shortcut::key(KeyCode::KeyY).ctrl(), "redo");
+    input.bind(Shortcut::key(KeyCode::KeyZ).ctrl().shift(), "redo");
+
+    // TEST: eraser mode
+    input.register_action("test_toggle_eraser", |engine: &mut Engine| {
+        engine.toggle_test_eraser();
+    });
+    input.bind(Shortcut::key(KeyCode::Digit8).ctrl(), "test_toggle_eraser");
 }
 
 fn main() -> Result<()> {

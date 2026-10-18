@@ -21,6 +21,12 @@ pub struct TestShapeSpec {
     pub kind: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestMode {
+    Spawn,
+    Erase,
+}
+
 impl TestShapeSpec {
     pub const fn new(name: &'static str, kind: u32) -> TestShapeSpec {
         Self { name, kind }
@@ -29,7 +35,7 @@ impl TestShapeSpec {
 
 #[derive(Default)]
 pub struct TestSpawner {
-    pub active: bool,
+    pub mode: Option<TestMode>,
     pub current: Option<TestShapeSpec>,
     pub cursor_screen: Vec2,
     pub color_mode: ColorMode,
@@ -38,12 +44,13 @@ pub struct TestSpawner {
 }
 
 impl TestSpawner {
-    pub fn toggle(&mut self) {
-        self.active = !self.active;
-        tracing::info!(
-            "test spawn mode: {}",
-            if self.active { "on" } else { "off" }
-        );
+    pub fn toggle_mode(&mut self, target: TestMode) {
+        if self.mode == Some(target) {
+            self.mode = None;
+        } else {
+            self.mode = Some(target);
+        }
+        tracing::info!("test mode: {:?}", self.mode);
     }
 
     pub fn select(&mut self, name: &'static str, kind: u32) {
@@ -52,6 +59,9 @@ impl TestSpawner {
     }
 
     pub fn spawn(&mut self, canvas: &mut Canvas) {
+        if !matches!(self.mode, Some(TestMode::Spawn)) {
+            return;
+        }
         let Some(spec) = self.current else {
             tracing::warn!("test spawn: not shape selected");
             return;
@@ -80,12 +90,29 @@ impl TestSpawner {
     }
 
     pub fn preview_color(&self) -> Option<Color> {
+        if !matches!(self.mode, Some(TestMode::Spawn)) {
+            return None;
+        }
         let spec = self.current?;
         Some(match self.color_mode {
             ColorMode::Cycle => TEST_PALETTE[self.palette_cursor % TEST_PALETTE.len()],
             ColorMode::Fixed => fixed_color(spec),
             ColorMode::Picked => self.picked_color,
         })
+    }
+
+    pub fn erase_at_cursor(&mut self, canvas: &mut Canvas) -> bool {
+        if !matches!(self.mode, Some(TestMode::Erase)) {
+            return false;
+        }
+        let world = canvas.camera.screen_to_world(self.cursor_screen);
+        let erased = canvas.erase_at_world(world);
+        if erased {
+            tracing::info!("test erase: shape erased at cursor");
+        } else {
+            tracing::info!("test erase: no shape found at cursor");
+        }
+        erased
     }
 
     fn next_color(&mut self, spec: TestShapeSpec) -> Color {

@@ -46,6 +46,18 @@ impl ShapeInstance {
             .with_params([width * 0.5, height * 0.5, 0.0, 0.0], [0.0; 4])
     }
 
+    pub fn contains_world(&self, p: Vec2) -> bool {
+        let center = Vec2::new(self.center[0], self.center[1]);
+        let half = Vec2::new(self.size[0], self.size[1]) * 0.5;
+        let d = p - center;
+
+        match self.kind {
+            KIND_RECT => d.x.abs() <= half.x && d.y.abs() <= half.y,
+            KIND_CIRCLE => d.length_squared() <= half.x * half.x,
+            _ => d.x.abs() <= half.x && d.y.abs() <= half.y, // Fallback to rect for unknown kinds
+        }
+    }
+
     pub fn circle(x: f32, y: f32, radius: f32, color: impl Into<Color>) -> Self {
         Self::new(
             KIND_CIRCLE,
@@ -53,7 +65,7 @@ impl ShapeInstance {
             Vec2::splat(radius * 2.0),
             color,
         )
-        .with_params([radius, 0.0, 0.0, 0.0], [0.0; 4])
+            .with_params([radius, 0.0, 0.0, 0.0], [0.0; 4])
     }
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -179,6 +191,7 @@ impl ShapeRegistry {
         s += "        default: {}\n    }\n    return d;\n}\n";
         s
     }
+
 
     fn push_kind(&mut self, name: &str, fn_name: String) -> u32 {
         let id = self.dispatch.len() as u32;

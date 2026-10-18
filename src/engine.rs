@@ -1,7 +1,7 @@
 use crate::canvas::Canvas;
 use crate::renderer::Renderer;
 use crate::shape::{ShapeError, ShapeRegistry};
-use crate::test_spawn::TestSpawner;
+use crate::test_spawn::{TestMode, TestSpawner};
 use std::sync::Arc;
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
@@ -46,7 +46,7 @@ impl Engine {
     }
 
     pub fn redraw(&mut self) {
-        let swatch = if self.test_spawner.active {
+        let swatch = if self.test_spawner.mode == Some(TestMode::Spawn) {
             self.test_spawner.preview_color()
         } else {
             None
@@ -79,8 +79,10 @@ impl Engine {
     // Test section (will be removed later)
 
     pub fn toggle_test_spawn(&mut self) {
-        self.test_spawner.toggle();
-        if self.test_spawner.active && self.test_spawner.current.is_none() {
+        let was_spawn = matches!(self.test_spawner.mode, Some(TestMode::Spawn));
+        self.test_spawner.toggle_mode(TestMode::Spawn);
+
+        if !was_spawn && self.test_spawner.current.is_none() {
             if let Some(kind) = self.shapes.kind("rect") {
                 self.test_spawner.select("rect", kind);
             }
@@ -88,8 +90,8 @@ impl Engine {
     }
 
     pub fn select_test_shape(&mut self, name: &'static str) {
-        if !self.test_spawner.active {
-            tracing::warn!("Test spawn: not active, cannot select shape");
+        if !matches!(self.test_spawner.mode, Some(TestMode::Spawn)) {
+            tracing::warn!("Test spawn: not in spawn mode, cannot select shape");
             return;
         }
 
@@ -101,11 +103,21 @@ impl Engine {
     }
 
     pub fn spawn_test_shape(&mut self) {
-        if !self.test_spawner.active {
-            tracing::warn!("Test spawn: not active, cannot spawn shape");
-            return;
+        match self.test_spawner.mode {
+            Some(TestMode::Spawn) => {
+                self.test_spawner.spawn(&mut self.canvas);
+            }
+            Some(TestMode::Erase) => {
+                if self.test_spawner.erase_at_cursor(&mut self.canvas) {
+                    tracing::info!("Test spawn: erased shape at cursor");
+                } else {
+                    tracing::info!("Test spawn: no shape at cursor to erase");
+                }
+            }
+            None => {
+                tracing::warn!("Test spawn: not in spawn or erase mode, cannot spawn shape");
+            }
         }
-        self.test_spawner.spawn(&mut self.canvas);
     }
 
     pub fn toggle_test_color_mode(&mut self) {
@@ -114,5 +126,25 @@ impl Engine {
 
     pub fn next_test_picked_color(&mut self) {
         self.test_spawner.next_picked_color();
+    }
+
+    pub fn toggle_test_eraser(&mut self) {
+        self.test_spawner.toggle_mode(TestMode::Erase);
+    }
+
+    pub fn erase_test_at_cursor(&mut self) {
+        if self.test_spawner.erase_at_cursor(&mut self.canvas) {
+            tracing::info!("Test spawn: erased shape at cursor");
+        } else {
+            tracing::info!("Test spawn: no shape at cursor to erase");
+        }
+    }
+
+    pub fn undo(&mut self) -> bool {
+        self.canvas.undo()
+    }
+
+    pub fn redo(&mut self) -> bool {
+        self.canvas.redo()
     }
 }
