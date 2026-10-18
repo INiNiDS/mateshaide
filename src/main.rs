@@ -70,7 +70,15 @@ impl ApplicationHandler for App {
             .unwrap();
 
         let window = Arc::new(window);
-        let engine = pollster::block_on(Engine::new(window.clone()));
+
+        let engine = match pollster::block_on(Engine::new(window.clone())) {
+            Ok(engine) => engine,
+            Err(err) => {
+                tracing::error!("failed to init engine: {err}");
+                event_loop.exit();
+                return;
+            }
+        };
 
         self.window = Some(window);
 

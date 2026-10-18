@@ -1,31 +1,53 @@
 use crate::canvas::Canvas;
 use crate::renderer::Renderer;
+use crate::shape::{ShapeError, ShapeRegistry};
 use std::sync::Arc;
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-// Struct for all engine components.
 pub struct Engine {
     pub canvas: Canvas,
+    pub shapes: ShapeRegistry,
     renderer: Renderer,
     last_frame_time: Instant,
 }
 
 impl Engine {
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new(window: Arc<Window>) -> Result<Self, ShapeError> {
         let size = window.inner_size();
         let canvas = Canvas::new(size.width as f32, size.height as f32);
-        let uniform = canvas.camera.uniform();
-        Self {
+        let shapes: ShapeRegistry = ShapeRegistry::with_builtins()?;
+        let renderer = Renderer::new(window, canvas.camera.uniform(), &shapes).await;
+
+        Ok(Self {
             canvas,
-            renderer: Renderer::new(window, uniform).await,
+            shapes,
+            renderer,
             last_frame_time: Instant::now(),
+        })
+    }
+
+    pub fn define_shape<F>(&mut self, define: F) -> Result<u32, ShapeError>
+    where
+        F: FnOnce(&mut ShapeRegistry) -> Result<u32, ShapeError>,
+    {
+        let backup = self.shapes.clone();
+        let kind = define(&mut self.shapes)?;
+
+        if let Err(err) = self.renderer.validate_wgsl(&self.shapes.build_wgsl()) {
+            self.shapes = backup;
+            return Err(ShapeError::Gpu(err));
         }
+        Ok(kind)
     }
 
     pub fn redraw(&mut self) {
-        self.renderer.redraw(self.canvas.camera.uniform());
+        self.renderer.redraw(
+            self.canvas.camera.uniform(),
+            &self.canvas.instances,
+            &self.shapes
+        )
     }
 
     pub fn update(&mut self) -> bool {
@@ -37,9 +59,9 @@ impl Engine {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.canvas.resize(width as f32, height as f32);
-        self.renderer.resize(PhysicalSize::new(width, height));
+        self.renderer.resize(PhysicalSize::new(width, height))
     }
-    
+
     pub fn reset_frame_time(&mut self) {
         self.last_frame_time = Instant::now();
     }
