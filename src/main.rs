@@ -1,7 +1,9 @@
 pub mod camera;
 pub mod canvas;
+pub mod color;
 pub mod engine;
 pub mod input;
+pub mod palette;
 pub mod render_pipeline;
 pub mod renderer;
 pub mod utils;
