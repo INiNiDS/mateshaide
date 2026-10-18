@@ -7,10 +7,13 @@ pub mod palette;
 pub mod render_pipeline;
 pub mod renderer;
 pub mod shape;
+pub mod test_spawn;
 pub mod utils;
 
+use crate::color::Color;
 use crate::engine::Engine;
 use crate::input::{InputManager, InputUpdate, Shortcut};
+use crate::shape::ShapeInstance;
 use anyhow::Result;
 use glam::Vec2;
 use std::sync::Arc;
@@ -31,25 +34,8 @@ struct App {
 impl App {
     fn new() -> Self {
         let mut input = InputManager::new();
-        input.register_action("zoom_in", |engine: &mut Engine| {
-            engine.canvas.zoom_at_center(1.0)
-        });
-        input.register_action("zoom_out", |engine: &mut Engine| {
-            engine.canvas.zoom_at_center(-1.0)
-        });
-        input.register_action("reset_view", |engine: &mut Engine| {
-            engine.canvas.reset_view()
-        });
 
-        input.bind(Shortcut::key(KeyCode::Equal).ctrl(), "zoom_in");
-        input.bind(Shortcut::key(KeyCode::NumpadAdd).ctrl(), "zoom_in");
-        input.bind(Shortcut::key(KeyCode::Equal).ctrl().shift(), "zoom_in");
-
-        input.bind(Shortcut::key(KeyCode::Minus).ctrl(), "zoom_out");
-        input.bind(Shortcut::key(KeyCode::NumpadSubtract).ctrl(), "zoom_out");
-
-        input.bind(Shortcut::key(KeyCode::Digit0).ctrl(), "reset_view");
-        input.bind(Shortcut::key(KeyCode::Numpad0).ctrl(), "reset_view");
+        initialize_input(&mut input);
 
         Self {
             window: None,
@@ -68,10 +54,9 @@ impl ApplicationHandler for App {
         let window = event_loop
             .create_window(Window::default_attributes().with_title("MateshaIDE"))
             .unwrap();
-
         let window = Arc::new(window);
 
-        let engine = match pollster::block_on(Engine::new(window.clone())) {
+        let mut engine = match pollster::block_on(Engine::new(window.clone())) {
             Ok(engine) => engine,
             Err(err) => {
                 tracing::error!("failed to init engine: {err}");
@@ -80,8 +65,40 @@ impl ApplicationHandler for App {
             }
         };
 
-        self.window = Some(window);
+        // Test
+        engine.canvas.add_shape(ShapeInstance::rect(
+            -50.0,
+            -50.0,
+            100.0,
+            100.0,
+            palette::RED_500,
+        ));
+        engine.canvas.add_shape(ShapeInstance::rect(
+            120.0,
+            60.0,
+            180.0,
+            90.0,
+            Color::hex(0x22c55e),
+        ));
+        engine.canvas.add_shape(ShapeInstance::rect(
+            -300.0,
+            -150.0,
+            80.0,
+            300.0,
+            palette::BLUE_500,
+        ));
+        engine.canvas.add_shape(ShapeInstance::rect(
+            200.0,
+            -200.0,
+            60.0,
+            60.0,
+            palette::VIOLET_500,
+        ));
+        engine
+            .canvas
+            .add_shape(ShapeInstance::circle(0.0, 200.0, 40.0, palette::INFO));
 
+        self.window = Some(window);
         self.engine = Some(engine);
 
         info!("wgpu context and window successfully initialized");
@@ -170,7 +187,8 @@ impl ApplicationHandler for App {
                 }
                 window.request_redraw();
             }
-            InputUpdate::CursorMoved { delta, .. } => {
+            InputUpdate::CursorMoved { delta, position } => {
+                engine.test_spawner.cursor_screen = position;
                 let is_panning = self.input.is_mouse_down(MouseButton::Right)
                     || self.input.is_mouse_down(MouseButton::Middle);
                 if is_panning {
@@ -189,6 +207,57 @@ impl ApplicationHandler for App {
             InputUpdate::None => {}
         }
     }
+}
+
+fn initialize_input(input: &mut InputManager) {
+    input.register_action("test_toggle_spawn", |engine: &mut Engine| {
+        engine.toggle_test_spawn();
+    });
+    input.register_action("test_select_rect", |engine: &mut Engine| {
+        engine.select_test_shape("rect");
+    });
+    input.register_action("test_select_circle", |engine: &mut Engine| {
+        engine.select_test_shape("circle");
+    });
+    input.register_action("test_select_hexagon", |engine: &mut Engine| {
+        engine.select_test_shape("hexagon");
+    });
+    input.register_action("test_select_rounded_rect", |engine: &mut Engine| {
+        engine.select_test_shape("rounded_rect");
+    });
+    input.register_action("test_spawn", |engine: &mut Engine| {
+        engine.spawn_test_shape();
+    });
+
+    input.bind(Shortcut::key(KeyCode::Digit1).ctrl(), "test_toggle_spawn");
+    input.bind(Shortcut::key(KeyCode::Digit2).ctrl(), "test_select_rect");
+    input.bind(Shortcut::key(KeyCode::Digit3).ctrl(), "test_select_circle");
+    input.bind(Shortcut::key(KeyCode::Digit4).ctrl(), "test_select_hexagon");
+    input.bind(
+        Shortcut::key(KeyCode::Digit5).ctrl(),
+        "test_select_rounded_rect",
+    );
+    input.bind(Shortcut::key(KeyCode::Digit1), "test_spawn");
+
+    input.register_action("zoom_in", |engine: &mut Engine| {
+        engine.canvas.zoom_at_center(1.0)
+    });
+    input.register_action("zoom_out", |engine: &mut Engine| {
+        engine.canvas.zoom_at_center(-1.0)
+    });
+    input.register_action("reset_view", |engine: &mut Engine| {
+        engine.canvas.reset_view()
+    });
+
+    input.bind(Shortcut::key(KeyCode::Equal).ctrl(), "zoom_in");
+    input.bind(Shortcut::key(KeyCode::NumpadAdd).ctrl(), "zoom_in");
+    input.bind(Shortcut::key(KeyCode::Equal).ctrl().shift(), "zoom_in");
+
+    input.bind(Shortcut::key(KeyCode::Minus).ctrl(), "zoom_out");
+    input.bind(Shortcut::key(KeyCode::NumpadSubtract).ctrl(), "zoom_out");
+
+    input.bind(Shortcut::key(KeyCode::Digit0).ctrl(), "reset_view");
+    input.bind(Shortcut::key(KeyCode::Numpad0).ctrl(), "reset_view");
 }
 
 fn main() -> Result<()> {
