@@ -36,3 +36,4 @@ wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
 tracing-wasm = "0.2"
 web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement"] }
+web-time = "1.1.0"

@@ -3,7 +3,10 @@ use crate::renderer::Renderer;
 use crate::shape::{ShapeError, ShapeRegistry};
 use crate::test_spawn::{TestMode, TestSpawner};
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::window::Window; // For test
 
