@@ -53,21 +53,36 @@ impl ApplicationHandler for App {
             #[cfg(target_arch = "wasm32")]
             let attributes = {
                 use wasm_bindgen::JsCast;
+                use winit::dpi::LogicalSize;
                 use winit::platform::web::WindowAttributesExtWebSys;
 
-                let document = web_sys::window()
-                    .expect("no global window")
-                    .document()
-                    .expect("no document");
+                let window = web_sys::window().expect("no global window");
+                let document = window.document().expect("no document");
                 let canvas = document
                     .get_element_by_id("matesha-canvas")
                     .expect("missing #matesha-canvas in DOM")
                     .dyn_into::<web_sys::HtmlCanvasElement>()
                     .expect("#matesha-canvas is not a <canvas>");
 
+                let dpr = window.device_pixel_ratio();
+                let inner_width = window
+                    .inner_width()
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(800.0);
+                let inner_height = window
+                    .inner_height()
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(600.0);
+
+                canvas.set_width((inner_width * dpr).max(1.0) as u32);
+                canvas.set_height((inner_height * dpr).max(1.0) as u32);
+
                 Window::default_attributes()
                     .with_title("MateshaIDE")
-                    .with_canvas(canvas)
+                    .with_canvas(Some(canvas))
+                    .with_inner_size(LogicalSize::new(inner_width, inner_height))
             };
 
             #[cfg(not(target_arch = "wasm32"))]
@@ -131,21 +146,39 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::RedrawRequested => {
-                let current = window.inner_size();
-                tracing::info!("redraw: window={:?}, engine={:?}", current, engine.size());
-                let engine_size = engine.size();
-                let need_size_sync = current.width > 0
-                    && current.height > 0
-                    && (current.width != engine_size.width || current.height != engine_size.height);
+                let mut current = window.inner_size();
 
-                if need_size_sync {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    if let Some(win) = web_sys::window() {
+                        let dpr = win.device_pixel_ratio();
+                        if let (Ok(w), Ok(h)) = (win.inner_width(), win.inner_height()) {
+                            if let (Some(w_val), Some(h_val)) = (w.as_f64(), h.as_f64()) {
+                                let real_w = (w_val * dpr).round() as u32;
+                                let real_h = (h_val * dpr).round() as u32;
+                                if real_w > 0 && real_h > 0 {
+                                    current.width = real_w;
+                                    current.height = real_h;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let engine_size = engine.size();
+                if current.width > 0
+                    && current.height > 0
+                    && (current.width != engine_size.width || current.height != engine_size.height)
+                {
                     engine.resize(current.width, current.height);
                 }
 
                 let is_gliding = engine.update();
-                engine.redraw();
+                if current.width > 0 && current.height > 0 {
+                    engine.redraw();
+                }
 
-                if is_gliding || current.width == 0 || current.height == 0 {
+                if is_gliding {
                     window.request_redraw();
                 }
                 return;
@@ -191,7 +224,11 @@ impl ApplicationHandler for App {
                     engine.canvas.zoom(self.input.cursor_position(), delta.y);
                 } else {
                     let pan_delta = if self.input.is_shift() {
-                        let x = if delta.x.abs() > 0.001 { delta.x } else { delta.y };
+                        let x = if delta.x.abs() > 0.001 {
+                            delta.x
+                        } else {
+                            delta.y
+                        };
                         Vec2::new(x * 32.0, 0.0)
                     } else {
                         Vec2::new(delta.x * 32.0, delta.y * 32.0)
@@ -222,11 +259,37 @@ impl ApplicationHandler for App {
 }
 
 fn seed_demo_shapes(engine: &mut Engine) {
-    engine.canvas.add_shape(ShapeInstance::rect(-50.0, -50.0, 100.0, 100.0, palette::RED_500));
-    engine.canvas.add_shape(ShapeInstance::rect(120.0, 60.0, 180.0, 90.0, Color::hex(0x22c55e)));
-    engine.canvas.add_shape(ShapeInstance::rect(-300.0, -150.0, 80.0, 300.0, palette::BLUE_500));
-    engine.canvas.add_shape(ShapeInstance::rect(200.0, -200.0, 60.0, 60.0, palette::VIOLET_500));
-    engine.canvas.add_shape(ShapeInstance::circle(0.0, 200.0, 40.0, palette::INFO));
+    engine.canvas.add_shape(ShapeInstance::rect(
+        -50.0,
+        -50.0,
+        100.0,
+        100.0,
+        palette::RED_500,
+    ));
+    engine.canvas.add_shape(ShapeInstance::rect(
+        120.0,
+        60.0,
+        180.0,
+        90.0,
+        Color::hex(0x22c55e),
+    ));
+    engine.canvas.add_shape(ShapeInstance::rect(
+        -300.0,
+        -150.0,
+        80.0,
+        300.0,
+        palette::BLUE_500,
+    ));
+    engine.canvas.add_shape(ShapeInstance::rect(
+        200.0,
+        -200.0,
+        60.0,
+        60.0,
+        palette::VIOLET_500,
+    ));
+    engine
+        .canvas
+        .add_shape(ShapeInstance::circle(0.0, 200.0, 40.0, palette::INFO));
 }
 
 /// Перенос старого `initialize_input` из main.rs БЕЗ изменения содержимого.

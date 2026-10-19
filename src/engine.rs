@@ -18,9 +18,11 @@ pub struct Engine {
 impl Engine {
     pub async fn new(window: Arc<Window>) -> Result<Self, EngineError> {
         let size = window.inner_size();
-        let canvas = Canvas::new(size.width as f32, size.height as f32);
+        let mut canvas = Canvas::new(size.width as f32, size.height as f32);
         let shapes: ShapeRegistry = ShapeRegistry::with_builtins()?;
         let renderer = Renderer::new(window, canvas.camera.uniform(), &shapes).await?;
+        let actual = renderer.size();
+        canvas.resize(actual.width as f32, actual.height as f32);
 
         Ok(Self {
             canvas,

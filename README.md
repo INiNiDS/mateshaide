@@ -25,28 +25,10 @@ and run it via Cargo:
 cargo run
 ```
 
-You can also use it in the browser:
+You can also use it in the browser (note native version works much smoother):
 https://ininids.github.io/mateshaide/
 
-## Features
-
-[] Text
-[] Draw
-[] Plugins
-[] PluginManager
-[] Math Engine
-[] Graphics
-[] Math Editor
-[] Math Compiler
-[] Math Interpreter
-[] Math Debugger
-[] Math Profiler
-[] Math Formatter
-[] Math Linter
-[] Math Refactorer
-[] Math Autocomplete
-[] Math Snippets
-[] Math Templates
+At the release it will be available on GitHub releases too.
 
 ## Features working by now
 

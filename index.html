@@ -65,7 +65,7 @@
 </style>
 </head>
 <body>
-    <canvas id="matesha-canvas"></canvas>
+    <canvas id="matesha-canvas" tabindex="0"></canvas>
     <div id="fallback">
         <h1>Your browser does not support WebGPU</h1>
         <p>MateshaIDE renders graphics via <b>WebGPU</b>.
@@ -107,7 +107,21 @@
             document.querySelectorAll("canvas").forEach((c) => c.remove());
         };
 
+        window.addEventListener("resize", () => {
+            const canvas = document.getElementById("matesha-canvas");
+            if (!canvas) return;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+            canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+        });
+
         async function boot() {
+            const canvas = document.getElementById("matesha-canvas");
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+            canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+            // winit only tracks Ctrl and key events while the canvas is focused
+            canvas.focus();
             if (!("gpu" in navigator)) {
                 window.showFallback("navigator.gpu is not available");
                 return;
