@@ -77,6 +77,10 @@ impl Engine {
         self.last_frame_time = Instant::now();
     }
 
+    pub fn size(&self) -> PhysicalSize<u32> {
+        self.renderer.size()
+    }
+
     // Test section (will be removed later)
 
     pub fn toggle_test_spawn(&mut self) {

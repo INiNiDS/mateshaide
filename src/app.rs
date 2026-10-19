@@ -105,14 +105,26 @@ impl ApplicationHandler for App {
         let mut engine_guard = self.engine.borrow_mut();
         let engine = match engine_guard.as_mut() {
             Some(e) => e,
-            None => return, // движок ещё инициализируется
+            None => return,
         };
 
         match event {
             WindowEvent::RedrawRequested => {
+                let current = window.inner_size();
+                tracing::info!("redraw: window={:?}, engine={:?}", current, engine.size());
+                let engine_size = engine.size();
+                let need_size_sync = current.width > 0
+                    && current.height > 0
+                    && (current.width != engine_size.width || current.height != engine_size.height);
+
+                if need_size_sync {
+                    engine.resize(current.width, current.height);
+                }
+
                 let is_gliding = engine.update();
                 engine.redraw();
-                if is_gliding {
+
+                if is_gliding || current.width == 0 || current.height == 0 {
                     window.request_redraw();
                 }
                 return;

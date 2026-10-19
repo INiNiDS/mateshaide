@@ -252,6 +252,10 @@ impl Renderer {
         self.surface = new_surface;
     }
 
+    pub fn size(&self) -> winit::dpi::PhysicalSize<u32> {
+        self.size
+    }
+
     pub fn redraw(
         &mut self,
         uniform: CameraUniform,
