@@ -5,12 +5,14 @@ use crate::test_spawn::{TestMode, TestSpawner};
 use std::sync::Arc;
 use web_time::Instant;
 use winit::dpi::PhysicalSize;
-use winit::window::Window; // For test
+use winit::window::Window;
+use crate::draw::DrawTool;
 
 pub struct Engine {
     pub canvas: Canvas,
     pub shapes: ShapeRegistry,
     pub test_spawner: TestSpawner, // for test
+    pub draw: DrawTool,
     renderer: Renderer,
     last_frame_time: Instant,
 }
@@ -28,6 +30,7 @@ impl Engine {
             canvas,
             shapes,
             renderer,
+            draw: Default::default(),
             last_frame_time: Instant::now(),
             test_spawner: TestSpawner::default(), // Guess what
         })

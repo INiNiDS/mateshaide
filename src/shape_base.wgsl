@@ -71,3 +71,11 @@ fn sd_hexagon(p: vec2<f32>, r: f32) -> f32 {
     q = q - vec2<f32>(clamp(q.x, -k.z * r, k.z * r), r);
     return length(q) * sign(q.y);
 }
+
+fn sd_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0);
+    return length(pa - ba * h);
+}
+

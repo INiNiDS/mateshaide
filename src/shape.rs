@@ -7,6 +7,7 @@ use wgpu::VertexFormat;
 
 pub const KIND_RECT: u32 = 0;
 pub const KIND_CIRCLE: u32 = 1;
+pub const KIND_LINE: u32 = 2;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -54,6 +55,13 @@ impl ShapeInstance {
         match self.kind {
             KIND_RECT => d.x.abs() <= half.x && d.y.abs() <= half.y,
             KIND_CIRCLE => d.length_squared() <= half.x * half.x,
+            KIND_LINE => {
+                let a = Vec2::new(self.a[0], self.a[1]) + center;
+                let b = Vec2::new(self.b[0], self.b[1]) + center;
+                let ab = b - a;
+                let t = ((p - a).dot(ab) / ab.length_squared().max(1e-8)).clamp(0.0, 1.0);
+                (p - (a + ab * t)).length() <= self.b[0]
+            }
             _ => d.x.abs() <= half.x && d.y.abs() <= half.y, // Fallback to rect for unknown kinds
         }
     }
@@ -65,7 +73,18 @@ impl ShapeInstance {
             Vec2::splat(radius * 2.0),
             color,
         )
-            .with_params([radius, 0.0, 0.0, 0.0], [0.0; 4])
+        .with_params([radius, 0.0, 0.0, 0.0], [0.0; 4])
+    }
+
+    pub fn line(start: Vec2, end: Vec2, radius: f32, color: impl Into<Color>) -> Self {
+        let min = start.min(end) - Vec2::splat(radius);
+        let max = start.max(end) + Vec2::splat(radius);
+        let center = (min + max) * 0.5;
+        let size = max - min;
+        let l1 = start - center;
+        let l2 = end - center;
+        Self::new(KIND_LINE, center, size, color)
+            .with_params([l1.x, l1.y, l2.x, l2.y], [radius, 0.0, 0.0, 0.0])
     }
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -136,7 +155,8 @@ impl ShapeRegistry {
         let mut reg = Self::new();
         let rect = reg.define_primitive("rect", "sd_box(p, a.xy)")?;
         let circle = reg.define_primitive("circle", "length(p) - a.x")?;
-        debug_assert_eq!((rect, circle), (KIND_RECT, KIND_CIRCLE));
+        let line = reg.define_primitive("line", "sd_segment(p, a.xy, a.zw) - b.x")?;
+        debug_assert_eq!((rect, circle, line), (KIND_RECT, KIND_CIRCLE, KIND_LINE));
 
         reg.define_primitive("hexagon", "sd_hexagon(p, a.x)")?;
         reg.define_primitive("rounded_rect", "sd_box(p, a.xy) - a.z")?;
@@ -191,7 +211,6 @@ impl ShapeRegistry {
         s += "        default: {}\n    }\n    return d;\n}\n";
         s
     }
-
 
     fn push_kind(&mut self, name: &str, fn_name: String) -> u32 {
         let id = self.dispatch.len() as u32;

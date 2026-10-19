@@ -121,6 +121,7 @@ impl ApplicationHandler for App {
         pollster::block_on(init);
     }
 
+    // TODO: High Complexity
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -292,7 +293,6 @@ fn seed_demo_shapes(engine: &mut Engine) {
         .add_shape(ShapeInstance::circle(0.0, 200.0, 40.0, palette::INFO));
 }
 
-/// Перенос старого `initialize_input` из main.rs БЕЗ изменения содержимого.
 pub fn initialize_input(input: &mut InputManager) {
     input.register_action("test_toggle_spawn", |engine: &mut Engine| {
         engine.toggle_test_spawn();

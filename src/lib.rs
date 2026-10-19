@@ -9,6 +9,7 @@ pub mod renderer;
 pub mod shape;
 pub mod test_spawn;
 pub mod utils;
+pub mod draw;
 
 mod app;
 pub use app::{initialize_input, App};
