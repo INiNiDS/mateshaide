@@ -3,7 +3,9 @@ use crate::shape::ShapeInstance;
 use glam::Vec2;
 use std::collections::VecDeque;
 use web_time::Instant;
+use crate::color::Color;
 
+const MIN_STROKE_STEP: f32 = 2.0;
 const STEP_PIXELS: f32 = 50.0;
 const FRICTION: f32 = 12.0;
 const VELOCITY_SAMPLE_WINDOW_SECS: f32 = 0.08;
@@ -17,6 +19,9 @@ pub struct Canvas {
     is_panning: bool,
     history_undo: Vec<Vec<ShapeInstance>>,
     history_redo: Vec<Vec<ShapeInstance>>,
+    stroke_active: bool,
+    stroke_last: Option<Vec2>,
+    stroke_segments: usize,
 }
 
 impl Canvas {
@@ -29,6 +34,9 @@ impl Canvas {
             is_panning: false,
             history_undo: vec![],
             history_redo: vec![],
+            stroke_active: false,
+            stroke_last: None,
+            stroke_segments: 0,
         }
     }
 
@@ -85,12 +93,46 @@ impl Canvas {
         }
     }
 
-    fn push_history(&mut self) {
-        self.history_undo.push(self.instances.clone());
-        if self.history_undo.len() >= HISTORY_CAP {
-            self.history_undo.remove(0);
+    pub fn is_stroking(&self) -> bool {
+        self.stroke_active
+    }
+
+    pub fn begin_stroke(&mut self) {
+        if self.stroke_active {
+            return;
+        };
+        self.push_history();
+        self.stroke_active = true;
+        self.stroke_last = None;
+        self.stroke_segments = 0;
+    }
+
+    pub fn extend_stroke(&mut self, world: Vec2, width: f32, color: Color) {
+        if !self.stroke_active {
+            return;
         }
-        self.history_redo.clear();
+        match self.stroke_last {
+            None => self.stroke_last = Some(world),
+            Some(last) => {
+                if last.distance(world) < MIN_STROKE_STEP {
+                    return;
+                }
+                self.instances.push(ShapeInstance::line(last, world, width * 0.5, color));
+                self.stroke_last = Some(world);
+                self.stroke_segments += 1;
+            }
+        }
+    }
+
+    pub fn end_stroke(&mut self) {
+        if !self.stroke_active {
+            return;
+        }
+        self.stroke_active = false;
+        self.stroke_last = None;
+        if self.stroke_segments == 0 {
+            self.history_undo.pop();
+        }
     }
 
     pub fn resize(&mut self, width: f32, height: f32) {
@@ -203,5 +245,12 @@ impl Canvas {
                 break;
             }
         }
+    }
+    fn push_history(&mut self) {
+        self.history_undo.push(self.instances.clone());
+        if self.history_undo.len() >= HISTORY_CAP {
+            self.history_undo.remove(0);
+        }
+        self.history_redo.clear();
     }
 }

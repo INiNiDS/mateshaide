@@ -201,6 +201,18 @@ impl ApplicationHandler for App {
                 window.request_redraw();
             }
             InputUpdate::MouseButton { button, state } => {
+                if button == MouseButton::Left {
+                    match state {
+                        ElementState::Pressed => {
+                            engine.draw.begin(&mut engine.canvas, self.input.cursor_position());
+                            window.request_redraw();
+                        }
+                        ElementState::Released => {
+                            engine.draw.end(&mut engine.canvas);
+                            window.request_redraw();
+                        }
+                    }
+                }
                 if button == MouseButton::Right || button == MouseButton::Middle {
                     match state {
                         ElementState::Pressed => {
@@ -240,6 +252,12 @@ impl ApplicationHandler for App {
             }
             InputUpdate::CursorMoved { delta, position } => {
                 engine.test_spawner.cursor_screen = position;
+
+                if engine.canvas.is_stroking() {
+                    engine.draw.point(&mut engine.canvas, position);
+                    window.request_redraw();
+                }
+
                 let is_panning = self.input.is_mouse_down(MouseButton::Right)
                     || self.input.is_mouse_down(MouseButton::Middle);
                 if is_panning {
@@ -248,6 +266,7 @@ impl ApplicationHandler for App {
                 }
             }
             InputUpdate::FocusLost => {
+                engine.draw.end(&mut engine.canvas);
                 if engine.canvas.is_panning() {
                     engine.canvas.cancel_pan();
                 }
@@ -293,6 +312,8 @@ fn seed_demo_shapes(engine: &mut Engine) {
         .add_shape(ShapeInstance::circle(0.0, 200.0, 40.0, palette::INFO));
 }
 
+
+// Oh no, this function need to split into smaller TODO: High Complexity
 pub fn initialize_input(input: &mut InputManager) {
     input.register_action("test_toggle_spawn", |engine: &mut Engine| {
         engine.toggle_test_spawn();
@@ -375,4 +396,8 @@ pub fn initialize_input(input: &mut InputManager) {
         engine.toggle_test_eraser();
     });
     input.bind(Shortcut::key(KeyCode::Digit8).ctrl(), "test_toggle_eraser");
+    input.register_action("toggle_draw", |engine: &mut Engine| {
+        engine.draw.toggle();
+    });
+    input.bind(Shortcut::key(KeyCode::Digit9).ctrl(), "toggle_draw");
 }
