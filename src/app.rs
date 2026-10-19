@@ -49,11 +49,32 @@ impl ApplicationHandler for App {
             return;
         }
 
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes().with_title("MateshaIDE"))
-                .unwrap(),
-        );
+        let window = {
+            #[cfg(target_arch = "wasm32")]
+            let attributes = {
+                use wasm_bindgen::JsCast;
+                use winit::platform::web::WindowAttributesExtWebSys;
+
+                let document = web_sys::window()
+                    .expect("no global window")
+                    .document()
+                    .expect("no document");
+                let canvas = document
+                    .get_element_by_id("matesha-canvas")
+                    .expect("missing #matesha-canvas in DOM")
+                    .dyn_into::<web_sys::HtmlCanvasElement>()
+                    .expect("#matesha-canvas is not a <canvas>");
+
+                Window::default_attributes()
+                    .with_title("MateshaIDE")
+                    .with_canvas(canvas)
+            };
+
+            #[cfg(not(target_arch = "wasm32"))]
+            let attributes = Window::default_attributes().with_title("MateshaIDE");
+
+            Arc::new(event_loop.create_window(attributes).unwrap())
+        };
         *self.window.borrow_mut() = Some(window.clone());
 
         let engine_slot = self.engine.clone();
