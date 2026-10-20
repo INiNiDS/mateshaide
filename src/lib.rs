@@ -11,9 +11,10 @@ pub mod test_spawn;
 pub mod utils;
 pub mod draw;
 pub mod text;
+pub mod builtin_input;
 
 mod app;
-pub use app::{initialize_input, App};
-
+pub use app::{App};
+pub use builtin_input::initialize_input;
 #[cfg(target_arch = "wasm32")]
 mod wasm_entry;

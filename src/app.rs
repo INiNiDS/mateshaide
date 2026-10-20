@@ -1,8 +1,9 @@
 use crate::color::Color;
 use crate::engine::Engine;
-use crate::input::{InputManager, InputUpdate, Shortcut};
+use crate::input::{InputManager, InputUpdate};
 use crate::palette;
 use crate::shape::ShapeInstance;
+use crate::text::CanvasText;
 use glam::Vec2;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,9 +12,8 @@ use tracing::info;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::KeyCode;
 use winit::window::{Window, WindowId};
-use crate::text::CanvasText;
+use crate::builtin_input::initialize_input;
 
 type Slot<T> = Rc<RefCell<Option<T>>>;
 
@@ -122,7 +122,6 @@ impl ApplicationHandler for App {
         pollster::block_on(init);
     }
 
-    // TODO: High Complexity
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -146,50 +145,13 @@ impl ApplicationHandler for App {
             None => return,
         };
 
-        match event {
+        match &event {
             WindowEvent::RedrawRequested => {
-                let current = window.inner_size();
-
-                #[cfg(target_arch = "wasm32")]
-                {
-                    if let Some(win) = web_sys::window() {
-                        let dpr = win.device_pixel_ratio();
-                        if let (Ok(w), Ok(h)) = (win.inner_width(), win.inner_height()) {
-                            if let (Some(w_val), Some(h_val)) = (w.as_f64(), h.as_f64()) {
-                                let real_w = (w_val * dpr).round() as u32;
-                                let real_h = (h_val * dpr).round() as u32;
-                                if real_w > 0 && real_h > 0 {
-                                    current.width = real_w;
-                                    current.height = real_h;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                let engine_size = engine.size();
-                if current.width > 0
-                    && current.height > 0
-                    && (current.width != engine_size.width || current.height != engine_size.height)
-                {
-                    engine.resize(current.width, current.height);
-                }
-
-                let is_gliding = engine.update();
-                if current.width > 0 && current.height > 0 {
-                    engine.redraw();
-                }
-
-                if is_gliding {
-                    window.request_redraw();
-                }
+                Self::handle_redraw_requested(&window, engine);
                 return;
             }
-            WindowEvent::Resized(new_size) => {
-                if new_size.width > 0 && new_size.height > 0 {
-                    engine.resize(new_size.width, new_size.height);
-                    window.request_redraw();
-                }
+            WindowEvent::Resized(size) => {
+                Self::handle_window_resized(&window, engine, size.width, size.height);
                 return;
             }
             _ => {}
@@ -197,87 +159,175 @@ impl ApplicationHandler for App {
 
         let update = self.input.process_event(&event, engine);
 
+        Self::handle_input_update(&self.input, engine, update, &window)
+    }
+}
+
+impl App {
+    fn handle_redraw_requested(window: &Window, engine: &mut Engine) {
+        #[allow(unused_mut)] // mut needs to be mutable in wasm32, but when you're running on desktop it gives a warning
+        let mut current = window.inner_size();
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(win) = web_sys::window() {
+                let dpr = win.device_pixel_ratio();
+
+                if let (Ok(w), Ok(h)) = (win.inner_width(), win.inner_height()) {
+                    if let (Some(w_val), Some(h_val)) = (w.as_f64(), h.as_f64()) {
+                        let real_w = (w_val * dpr).round() as u32;
+                        let real_h = (h_val * dpr).round() as u32;
+
+                        if real_w > 0 && real_h > 0 {
+                            current.width = real_w;
+                            current.height = real_h;
+                        }
+                    }
+                }
+            }
+        }
+
+        let engine_size = engine.size();
+
+        if current.width > 0
+            && current.height > 0
+            && (current.width != engine_size.width || current.height != engine_size.height)
+        {
+            engine.resize(current.width, current.height);
+        }
+
+        let is_gliding = engine.update();
+
+        if current.width > 0 && current.height > 0 {
+            engine.redraw();
+        }
+
+        if is_gliding {
+            window.request_redraw();
+        }
+    }
+
+    fn handle_window_resized(window: &Window, engine: &mut Engine, width: u32, height: u32) {
+        if width > 0 && height > 0 {
+            engine.resize(width, height);
+            window.request_redraw();
+        }
+    }
+
+    fn handle_input_update(
+        input: &InputManager,
+        engine: &mut Engine,
+        update: InputUpdate,
+        window: &Window,
+    ) {
         match update {
             InputUpdate::ActionExecuted => {
                 window.request_redraw();
             }
-            InputUpdate::MouseButton { button, state } => {
-                if button == MouseButton::Left {
-                    match state {
-                        ElementState::Pressed => {
-                            engine
-                                .draw
-                                .begin(&mut engine.canvas, self.input.cursor_position());
-                            window.request_redraw();
-                        }
-                        ElementState::Released => {
-                            engine.draw.end(&mut engine.canvas);
-                            window.request_redraw();
-                        }
-                    }
-                }
-                if button == MouseButton::Right || button == MouseButton::Middle {
-                    match state {
-                        ElementState::Pressed => {
-                            if !engine.canvas.is_panning() {
-                                engine.canvas.start_pan();
-                            }
-                        }
-                        ElementState::Released => {
-                            let still_holding = self.input.is_mouse_down(MouseButton::Middle)
-                                || self.input.is_mouse_down(MouseButton::Right);
-                            if !still_holding {
-                                engine.canvas.end_pan();
-                                engine.reset_frame_time();
-                                window.request_redraw();
-                            }
-                        }
-                    }
-                }
+            InputUpdate::None => {}
+            InputUpdate::FocusLost => {
+                Self::handle_focus_lost(engine, window);
+            }
+            InputUpdate::CursorMoved { position, delta } => {
+                Self::handle_cursor_moved(input, engine, position, window, delta);
             }
             InputUpdate::MouseWheel { delta } => {
-                if self.input.is_ctrl() {
-                    engine.canvas.zoom(self.input.cursor_position(), delta.y);
-                } else {
-                    let pan_delta = if self.input.is_shift() {
-                        let x = if delta.x.abs() > 0.001 {
-                            delta.x
-                        } else {
-                            delta.y
-                        };
-                        Vec2::new(x * 32.0, 0.0)
-                    } else {
-                        Vec2::new(delta.x * 32.0, delta.y * 32.0)
-                    };
-                    engine.canvas.pan(pan_delta);
-                }
-                window.request_redraw();
+                Self::handle_mouse_wheel(input, engine, delta, window);
             }
-            InputUpdate::CursorMoved { delta, position } => {
-                engine.test_spawner.cursor_screen = position;
-
-                if engine.canvas.is_stroking() {
-                    engine.draw.point(&mut engine.canvas, position);
-                    window.request_redraw();
-                }
-
-                let is_panning = self.input.is_mouse_down(MouseButton::Right)
-                    || self.input.is_mouse_down(MouseButton::Middle);
-                if is_panning {
-                    engine.canvas.track_pan(delta);
-                    window.request_redraw();
-                }
+            InputUpdate::MouseButton { button, state } => {
+                Self::handle_mouse_button(input, engine, button, state, window);
             }
-            InputUpdate::FocusLost => {
-                engine.draw.end(&mut engine.canvas);
-                if engine.canvas.is_panning() {
-                    engine.canvas.cancel_pan();
-                }
-                engine.reset_frame_time();
-                window.request_redraw();
-            }
-            InputUpdate::None => {}
         }
+    }
+
+    fn handle_mouse_button(
+        input: &InputManager,
+        engine: &mut Engine,
+        button: MouseButton,
+        state: ElementState,
+        window: &Window,
+    ) {
+        if button == MouseButton::Left {
+            match state {
+                ElementState::Pressed => {
+                    engine
+                        .draw
+                        .begin(&mut engine.canvas, input.cursor_position());
+                    window.request_redraw();
+                }
+                ElementState::Released => {
+                    engine.draw.end(&mut engine.canvas);
+                    window.request_redraw();
+                }
+            }
+        }
+        if button == MouseButton::Right || button == MouseButton::Middle {
+            match state {
+                ElementState::Pressed => {
+                    if !engine.canvas.is_panning() {
+                        engine.canvas.start_pan();
+                    }
+                }
+                ElementState::Released => {
+                    let still_holding = input.is_mouse_down(MouseButton::Middle)
+                        || input.is_mouse_down(MouseButton::Right);
+                    if !still_holding {
+                        engine.canvas.end_pan();
+                        engine.reset_frame_time();
+                        window.request_redraw();
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_mouse_wheel(input: &InputManager, engine: &mut Engine, delta: Vec2, window: &Window) {
+        if input.is_ctrl() {
+            engine.canvas.zoom(input.cursor_position(), delta.y);
+        } else {
+            let pan_delta = if input.is_shift() {
+                let x = if delta.x.abs() > 0.001 {
+                    delta.x
+                } else {
+                    delta.y
+                };
+                Vec2::new(x * 32.0, 0.0)
+            } else {
+                Vec2::new(delta.x * 32.0, delta.y * 32.0)
+            };
+            engine.canvas.pan(pan_delta);
+        }
+        window.request_redraw();
+    }
+
+    fn handle_cursor_moved(
+        input: &InputManager,
+        engine: &mut Engine,
+        position: Vec2,
+        window: &Window,
+        delta: Vec2
+    ) {
+        engine.test_spawner.cursor_screen = position;
+
+        if engine.canvas.is_stroking() {
+            engine.draw.point(&mut engine.canvas, position);
+            window.request_redraw();
+        }
+        let is_panning =
+            input.is_mouse_down(MouseButton::Right) || input.is_mouse_down(MouseButton::Middle);
+        if is_panning {
+            engine.canvas.track_pan(delta);
+            window.request_redraw();
+        }
+    }
+
+    fn handle_focus_lost(engine: &mut Engine, window: &Window) {
+        engine.draw.end(&mut engine.canvas);
+        if engine.canvas.is_panning() {
+            engine.canvas.cancel_pan();
+        }
+        engine.reset_frame_time();
+        window.request_redraw();
     }
 }
 
@@ -322,91 +372,4 @@ fn seed_demo_shapes(engine: &mut Engine) {
     });
 }
 
-// Oh no, this function need to split into smaller TODO: High Complexity
-pub fn initialize_input(input: &mut InputManager) {
-    input.register_action("test_toggle_spawn", |engine: &mut Engine| {
-        engine.toggle_test_spawn();
-    });
-    input.register_action("test_select_rect", |engine: &mut Engine| {
-        engine.select_test_shape("rect");
-    });
-    input.register_action("test_select_circle", |engine: &mut Engine| {
-        engine.select_test_shape("circle");
-    });
-    input.register_action("test_select_hexagon", |engine: &mut Engine| {
-        engine.select_test_shape("hexagon");
-    });
-    input.register_action("test_select_rounded_rect", |engine: &mut Engine| {
-        engine.select_test_shape("rounded_rect");
-    });
-    input.register_action("test_spawn", |engine: &mut Engine| {
-        engine.spawn_test_shape();
-    });
 
-    input.bind(Shortcut::key(KeyCode::Digit1).ctrl(), "test_toggle_spawn");
-    input.bind(Shortcut::key(KeyCode::Digit2).ctrl(), "test_select_rect");
-    input.bind(Shortcut::key(KeyCode::Digit3).ctrl(), "test_select_circle");
-    input.bind(Shortcut::key(KeyCode::Digit4).ctrl(), "test_select_hexagon");
-    input.bind(
-        Shortcut::key(KeyCode::Digit5).ctrl(),
-        "test_select_rounded_rect",
-    );
-    input.bind(Shortcut::key(KeyCode::Digit1), "test_spawn");
-
-    input.register_action("zoom_in", |engine: &mut Engine| {
-        engine.canvas.zoom_at_center(1.0)
-    });
-    input.register_action("zoom_out", |engine: &mut Engine| {
-        engine.canvas.zoom_at_center(-1.0)
-    });
-    input.register_action("reset_view", |engine: &mut Engine| {
-        engine.canvas.reset_view()
-    });
-
-    input.bind(Shortcut::key(KeyCode::Equal).ctrl(), "zoom_in");
-    input.bind(Shortcut::key(KeyCode::NumpadAdd).ctrl(), "zoom_in");
-    input.bind(Shortcut::key(KeyCode::Equal).ctrl().shift(), "zoom_in");
-
-    input.bind(Shortcut::key(KeyCode::Minus).ctrl(), "zoom_out");
-    input.bind(Shortcut::key(KeyCode::NumpadSubtract).ctrl(), "zoom_out");
-
-    input.bind(Shortcut::key(KeyCode::Digit0).ctrl(), "reset_view");
-    input.bind(Shortcut::key(KeyCode::Numpad0).ctrl(), "reset_view");
-
-    input.register_action("test_toggle_color_mode", |engine: &mut Engine| {
-        engine.toggle_test_color_mode();
-    });
-    input.bind(
-        Shortcut::key(KeyCode::Digit6).ctrl(),
-        "test_toggle_color_mode",
-    );
-
-    input.register_action("test_next_picked_color", |engine: &mut Engine| {
-        engine.next_test_picked_color();
-    });
-    input.bind(
-        Shortcut::key(KeyCode::Digit7).ctrl(),
-        "test_next_picked_color",
-    );
-
-    input.register_action("undo", |engine: &mut Engine| {
-        engine.undo();
-    });
-    input.register_action("redo", |engine: &mut Engine| {
-        engine.redo();
-    });
-
-    input.bind(Shortcut::key(KeyCode::KeyZ).ctrl(), "undo");
-    input.bind(Shortcut::key(KeyCode::KeyX).ctrl(), "redo");
-    input.bind(Shortcut::key(KeyCode::KeyY).ctrl(), "redo");
-    input.bind(Shortcut::key(KeyCode::KeyZ).ctrl().shift(), "redo");
-
-    input.register_action("test_toggle_eraser", |engine: &mut Engine| {
-        engine.toggle_test_eraser();
-    });
-    input.bind(Shortcut::key(KeyCode::Digit8).ctrl(), "test_toggle_eraser");
-    input.register_action("toggle_draw", |engine: &mut Engine| {
-        engine.draw.toggle();
-    });
-    input.bind(Shortcut::key(KeyCode::Digit9).ctrl(), "toggle_draw");
-}
