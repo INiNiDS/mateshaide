@@ -148,7 +148,7 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::RedrawRequested => {
-                let mut current = window.inner_size();
+                let current = window.inner_size();
 
                 #[cfg(target_arch = "wasm32")]
                 {
