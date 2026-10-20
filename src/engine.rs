@@ -59,10 +59,11 @@ impl Engine {
         };
 
         self.renderer.redraw(
-            self.canvas.camera.uniform(),
+            &self.canvas.camera,
             &self.canvas.instances,
+            &self.canvas.texts,
             &self.shapes,
-            swatch
+            swatch,
         )
     }
 

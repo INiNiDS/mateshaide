@@ -13,6 +13,7 @@ use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::{Window, WindowId};
+use crate::text::CanvasText;
 
 type Slot<T> = Rc<RefCell<Option<T>>>;
 
@@ -204,7 +205,9 @@ impl ApplicationHandler for App {
                 if button == MouseButton::Left {
                     match state {
                         ElementState::Pressed => {
-                            engine.draw.begin(&mut engine.canvas, self.input.cursor_position());
+                            engine
+                                .draw
+                                .begin(&mut engine.canvas, self.input.cursor_position());
                             window.request_redraw();
                         }
                         ElementState::Released => {
@@ -310,8 +313,14 @@ fn seed_demo_shapes(engine: &mut Engine) {
     engine
         .canvas
         .add_shape(ShapeInstance::circle(0.0, 200.0, 40.0, palette::INFO));
-}
 
+    engine.canvas.add_text(CanvasText {
+        position: Vec2::new(-50.0, -80.0),
+        text: "Hello, MateshaIDE!".to_owned(),
+        size: 24.0,
+        color: palette::GRAY_900,
+    });
+}
 
 // Oh no, this function need to split into smaller TODO: High Complexity
 pub fn initialize_input(input: &mut InputManager) {

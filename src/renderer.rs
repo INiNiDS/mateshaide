@@ -1,4 +1,4 @@
-use crate::camera::CameraUniform;
+use crate::camera::{Camera, CameraUniform};
 use crate::color::Color;
 use crate::palette;
 use crate::render_pipeline::RenderPipeline;
@@ -8,6 +8,7 @@ use tracing::warn;
 use wgpu::CurrentSurfaceTexture;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
+use crate::text::{CanvasText, TextLayer};
 
 const SWATCH_PX: f32 = 48.0;
 const OVERLAY_CAP: usize = 8; // For test (will remove)
@@ -29,6 +30,7 @@ pub struct Renderer {
     camera_bind_group: wgpu::BindGroup,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
+    text: TextLayer,
 
     // Test (will remove)
     overlay_bind_group: wgpu::BindGroup,
@@ -183,6 +185,8 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
+        let text = TextLayer::new(&device, &queue, config.format);
+
         Ok(Self {
             instance,
             surface,
@@ -200,6 +204,7 @@ impl Renderer {
             instance_capacity: initial_capacity,
             overlay_bind_group,
             overlay_instance_buffer,
+            text,
         })
     }
 
@@ -258,8 +263,9 @@ impl Renderer {
 
     pub fn redraw(
         &mut self,
-        uniform: CameraUniform,
+        camera: &Camera,
         instances: &[ShapeInstance],
+        texts: &[CanvasText],
         shapes: &ShapeRegistry,
         swatch: Option<Color>,
     ) {
@@ -272,6 +278,7 @@ impl Renderer {
             );
             self.pipeline_version = shapes.version();
         }
+        let uniform = camera.uniform();
 
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
@@ -290,6 +297,8 @@ impl Renderer {
             self.queue
                 .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(instances));
         }
+
+        self.text.prepare(&self.device, &self.queue, camera, texts);
 
         let output = match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(texture) => texture,
@@ -356,6 +365,8 @@ impl Renderer {
                 &self.instance_buffer,
                 instances.len() as u32,
             );
+
+            self.text.render(&mut render_pass);
         }
 
         if let Some(color) = swatch {
@@ -388,11 +399,13 @@ impl Renderer {
                 &self.overlay_bind_group,
                 &self.overlay_instance_buffer,
                 overlay.len() as u32,
-            )
+            );
         }
 
         self.queue.submit(Some(encoder.finish()));
         self.queue.present(output);
+
+        self.text.trim();
     }
 }
 

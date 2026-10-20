@@ -48,6 +48,14 @@ impl Camera {
         )
     }
 
+    pub fn world_to_screen(&self, world: Vec2) -> Vec2 {
+        let d = world - self.offset;
+        Vec2::new(
+            d.x * self.zoom + self.screen_size.x / 2.0,
+            -d.y * self.zoom + self.screen_size.y / 2.0
+        )
+    }
+
     pub fn zoom_at(&mut self, cursor_pos: Vec2, delta: f32) {
         let old_world = self.screen_to_world(cursor_pos);
 

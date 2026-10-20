@@ -268,3 +268,14 @@ impl From<Color> for wgpu::Color {
         c.to_wgpu()
     }
 }
+
+impl From<Color> for glyphon::Color {
+    fn from(color: Color) -> Self {
+        glyphon::Color::rgba(
+            (color.r.clamp(0.0, 1.0) * 255.0) as u8,
+            (color.g.clamp(0.0, 1.0) * 255.0) as u8,
+            (color.b.clamp(0.0, 1.0) * 255.0) as u8,
+            (color.a.clamp(0.0, 1.0) * 255.0) as u8,
+        )
+    }
+}

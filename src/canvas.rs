@@ -4,6 +4,7 @@ use glam::Vec2;
 use std::collections::VecDeque;
 use web_time::Instant;
 use crate::color::Color;
+use crate::text::CanvasText;
 
 const MIN_STROKE_STEP: f32 = 2.0;
 const STEP_PIXELS: f32 = 50.0;
@@ -22,6 +23,7 @@ pub struct Canvas {
     stroke_active: bool,
     stroke_last: Option<Vec2>,
     stroke_segments: usize,
+    pub texts: Vec<CanvasText>,
 }
 
 impl Canvas {
@@ -37,12 +39,18 @@ impl Canvas {
             stroke_active: false,
             stroke_last: None,
             stroke_segments: 0,
+            texts: Vec::new(),
         }
     }
 
     pub fn add_shape(&mut self, shape: ShapeInstance) {
         self.push_history();
         self.instances.push(shape);
+    }
+
+    pub fn add_text(&mut self, text: CanvasText) {
+        self.push_history();
+        self.texts.push(text);
     }
 
     pub fn erase_at(&mut self, index: usize) -> bool {
