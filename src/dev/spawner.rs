@@ -158,7 +158,7 @@ pub enum ColorMode {
 }
 
 impl ColorMode {
-    fn cycle(&self) -> Self {
+    fn cycle(self) -> Self {
         match self {
             ColorMode::Cycle => ColorMode::Fixed,
             ColorMode::Fixed => ColorMode::Picked,

@@ -135,7 +135,7 @@ impl<Ctx> InputManager<Ctx> {
             WindowEvent::MouseInput { state, button, .. } => {
                 self.handle_mouse_input(*button, *state, ctx)
             }
-            WindowEvent::MouseWheel { delta, .. } => self.handle_mouse_wheel(delta),
+            WindowEvent::MouseWheel { delta, .. } => Self::handle_mouse_wheel(delta),
             _ => InputUpdate::None,
         }
     }
@@ -191,7 +191,7 @@ impl<Ctx> InputManager<Ctx> {
         InputUpdate::MouseButton { button, state }
     }
 
-    fn handle_mouse_wheel(&mut self, delta: &MouseScrollDelta) -> InputUpdate {
+    fn handle_mouse_wheel(delta: &MouseScrollDelta) -> InputUpdate {
         let delta_vec = match *delta {
             MouseScrollDelta::LineDelta(x, y) => Vec2::new(x, y),
             MouseScrollDelta::PixelDelta(pos) => Vec2::new(

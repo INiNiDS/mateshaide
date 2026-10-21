@@ -30,7 +30,7 @@ impl Engine {
             canvas,
             shapes,
             renderer,
-            draw: Default::default(),
+            draw: DrawTool::default(),
             last_frame_time: Instant::now(),
             test_spawner: TestSpawner::default(), // Guess what
         })

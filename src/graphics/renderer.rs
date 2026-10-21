@@ -8,7 +8,7 @@ use crate::shape::instance::ShapeInstance;
 use crate::shape::registry::ShapeRegistry;
 use std::sync::Arc;
 use tracing::warn;
-use wgpu::CurrentSurfaceTexture;
+use wgpu::{CurrentSurfaceTexture, SurfaceColorSpace};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
@@ -44,7 +44,7 @@ impl Renderer {
 
         #[cfg(not(target_arch = "wasm32"))]
         let surface = instance
-            .create_surface(window.clone())
+            .create_surface(Arc::clone(&window))
             .map_err(|e| RendererError::Surface(e.to_string()))?;
 
         #[cfg(target_arch = "wasm32")]
@@ -99,7 +99,7 @@ impl Renderer {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
-            color_space: Default::default(),
+            color_space: SurfaceColorSpace::default(),
             width: size.width.max(1),
             height: size.height.max(1),
             present_mode,
@@ -235,7 +235,7 @@ impl Renderer {
         #[cfg(not(target_arch = "wasm32"))]
         let new_surface = self
             .instance
-            .create_surface(self.window.clone())
+            .create_surface(Arc::clone(&self.window))
             .expect("Failed to recreate surface");
 
         #[cfg(target_arch = "wasm32")]

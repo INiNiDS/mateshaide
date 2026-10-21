@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use super::{App, demo};
 use crate::engine::Engine;
 use std::sync::Arc;
@@ -14,11 +15,11 @@ impl ApplicationHandler for App {
         }
 
         let window = create_window(event_loop);
-        *self.window.borrow_mut() = Some(window.clone());
+        *self.window.borrow_mut() = Some(Arc::clone(&window));
 
-        let engine_slot = self.engine.clone();
-        let window_slot = self.window.clone();
-        let window_for_init = window.clone();
+        let engine_slot = Rc::clone(&self.engine);
+        let window_slot = Rc::clone(&self.window);
+        let window_for_init = Arc::clone(&window);
 
         let init = async move {
             match Engine::new(window_for_init).await {
@@ -56,7 +57,7 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         let window = match self.window.borrow().as_ref() {
-            Some(window) if window.id() == window_id => window.clone(),
+            Some(window) if window.id() == window_id => Arc::clone(window),
             _ => return,
         };
 
@@ -67,10 +68,7 @@ impl ApplicationHandler for App {
         }
 
         let mut engine_guard = self.engine.borrow_mut();
-        let engine = match engine_guard.as_mut() {
-            Some(engine) => engine,
-            None => return,
-        };
+        let Some(engine) = engine_guard.as_mut() else { return };
 
         match &event {
             WindowEvent::RedrawRequested => {

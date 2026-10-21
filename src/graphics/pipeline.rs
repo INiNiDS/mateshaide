@@ -1,3 +1,4 @@
+use wgpu::{MultisampleState, PipelineCompilationOptions};
 use crate::shape::instance::ShapeInstance;
 
 pub struct RenderPipeline {
@@ -29,7 +30,7 @@ impl RenderPipeline {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 buffers: &[Some(ShapeInstance::desc())],
             },
             primitive: wgpu::PrimitiveState {
@@ -42,11 +43,11 @@ impl RenderPipeline {
                 conservative: false,
             },
             depth_stencil: None,
-            multisample: Default::default(),
+            multisample: MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
