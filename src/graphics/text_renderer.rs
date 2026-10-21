@@ -1,5 +1,6 @@
-use crate::camera::Camera;
-use crate::color::Color;
+use crate::canvas::camera::Camera;
+use crate::canvas::text::CanvasText;
+use crate::core::color::Color;
 use glam::Vec2;
 use glyphon::{
     Attrs, Buffer, Cache, Family, FontSystem, Metrics, PrepareError, Resolution, Shaping,
@@ -9,15 +10,7 @@ use wgpu::MultisampleState;
 
 const MIN_SCREEN_FONT_PX: f32 = 4.0; // Too small...
 const MAX_SCREEN_FONT_PX: f32 = 2000000000000000000.0; // Too big... Hmmm I'm thinking that doing nothing, because of is visible function...
-const FONT_BYTES: &[u8] = include_bytes!("../assets/Roboto-Black.ttf");
-
-#[derive(Debug, Clone)]
-pub struct CanvasText {
-    pub position: Vec2, // top left corner
-    pub text: String,
-    pub size: f32, // in world units
-    pub color: Color,
-}
+const FONT_BYTES: &[u8] = include_bytes!("../../assets/Roboto-Black.ttf");
 
 struct LaidOutText {
     buffer: Buffer,

@@ -1,12 +1,12 @@
 use crate::canvas::Canvas;
-use crate::renderer::Renderer;
+use crate::canvas::DrawTool;
+use crate::graphics::Renderer;
 use crate::shape::{ShapeError, ShapeRegistry};
-use crate::test_spawn::{TestMode, TestSpawner};
+use crate::dev::{TestMode, TestSpawner};
 use std::sync::Arc;
 use web_time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
-use crate::draw::DrawTool;
 
 pub struct Engine {
     pub canvas: Canvas,
@@ -165,5 +165,5 @@ pub enum EngineError {
     #[error(transparent)]
     Shape(#[from] ShapeError),
     #[error(transparent)]
-    Renderer(#[from] crate::renderer::RendererError),
+    Renderer(#[from] crate::graphics::RendererError),
 }

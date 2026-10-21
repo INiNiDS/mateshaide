@@ -1,96 +1,14 @@
+use crate::core::collections::{FastHashMap, FastHashSet};
 use crate::engine::Engine;
-use crate::utils::{FastHashMap, FastHashSet};
+use crate::input::action::{ActionCallback, ActionID};
+use crate::input::shortcut::{InputTrigger, Shortcut};
+use crate::input::update::InputUpdate;
 use glam::Vec2;
-use std::borrow::Cow;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 
 const TOUCHPAD_SCROLL_SCALE: f32 = 0.05;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ActionID(pub Cow<'static, str>);
-
-impl From<&'static str> for ActionID {
-    fn from(s: &'static str) -> Self {
-        Self(Cow::Borrowed(s))
-    }
-}
-
-impl From<String> for ActionID {
-    fn from(s: String) -> Self {
-        Self(Cow::Owned(s))
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum InputTrigger {
-    Key(KeyCode),
-    MouseButton(MouseButton),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Shortcut {
-    pub trigger: InputTrigger,
-    pub ctrl: bool,
-    pub shift: bool,
-    pub alt: bool,
-}
-
-impl Shortcut {
-    pub fn key(key: KeyCode) -> Self {
-        Self {
-            trigger: InputTrigger::Key(key),
-            ctrl: false,
-            shift: false,
-            alt: false,
-        }
-    }
-
-    pub fn mouse(button: MouseButton) -> Self {
-        Self {
-            trigger: InputTrigger::MouseButton(button),
-            ctrl: false,
-            shift: false,
-            alt: false,
-        }
-    }
-
-    pub fn ctrl(mut self) -> Self {
-        self.ctrl = true;
-        self
-    }
-
-    pub fn shift(mut self) -> Self {
-        self.shift = true;
-        self
-    }
-
-    pub fn alt(mut self) -> Self {
-        self.alt = true;
-        self
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum InputUpdate {
-    None,
-    ActionExecuted,
-    FocusLost,
-    CursorMoved {
-        position: Vec2,
-        delta: Vec2,
-    },
-    MouseWheel {
-        delta: Vec2,
-    },
-    MouseButton {
-        button: MouseButton,
-        state: ElementState,
-    },
-}
-
-pub type ActionCallback<Ctx = Engine> = Box<dyn FnMut(&mut Ctx)>;
 
 pub struct InputManager<Ctx = Engine> {
     actions: FastHashMap<ActionID, ActionCallback<Ctx>>,

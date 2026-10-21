@@ -1,19 +1,16 @@
-use crate::camera::{Camera, CameraUniform};
-use crate::color::Color;
-use crate::palette;
-use crate::render_pipeline::RenderPipeline;
-use crate::shape::{ShapeInstance, ShapeRegistry};
+use crate::canvas::camera::{Camera, CameraUniform};
+use crate::canvas::text::CanvasText;
+use crate::core::color::Color;
+use crate::graphics::overlay::{OVERLAY_CAP, build_swatch_instances};
+use crate::graphics::pipeline::RenderPipeline;
+use crate::graphics::text_renderer::TextLayer;
+use crate::shape::instance::ShapeInstance;
+use crate::shape::registry::ShapeRegistry;
 use std::sync::Arc;
 use tracing::warn;
 use wgpu::CurrentSurfaceTexture;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
-use crate::text::{CanvasText, TextLayer};
-
-const SWATCH_PX: f32 = 48.0;
-const OVERLAY_CAP: usize = 8; // For test (will remove)
-const SWATCH_BORDER_PX: f32 = 2.0;
-const SWATCH_MARGIN_PX: f32 = 16.0;
 
 pub struct Renderer {
     window: Arc<Window>,
@@ -407,30 +404,6 @@ impl Renderer {
 
         self.text.trim();
     }
-}
-
-fn build_swatch_instances(color: Color, width: u32, height: u32) -> Vec<ShapeInstance> {
-    let w = width.max(1) as f32;
-    let h = height.max(1) as f32;
-
-    let outer_half_px = SWATCH_PX * 0.5 + SWATCH_BORDER_PX;
-    let inner_half_px = SWATCH_PX * 0.5;
-
-    let ohx = 2.0 * outer_half_px / w;
-    let ohy = 2.0 * outer_half_px / h;
-    let ihx = 2.0 * inner_half_px / w;
-    let ihy = 2.0 * inner_half_px / h;
-
-    let cx_px = w - SWATCH_MARGIN_PX - outer_half_px;
-    let cy_px = SWATCH_MARGIN_PX + outer_half_px;
-
-    let cx = 2.0 * cx_px / w - 1.0;
-    let cy = 1.0 - 2.0 * cy_px / h;
-
-    vec![
-        ShapeInstance::rect(cx - ohx, cy - ohy, ohx * 2.0, ohy * 2.0, palette::GRAY_700),
-        ShapeInstance::rect(cx - ihx, cy - ihy, ihx * 2.0, ihy * 2.0, color),
-    ]
 }
 
 #[derive(Debug, thiserror::Error)]

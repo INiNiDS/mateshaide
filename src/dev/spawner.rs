@@ -1,5 +1,5 @@
 use crate::canvas::Canvas;
-use crate::color::Color;
+use crate::core::Color;
 use crate::palette;
 use crate::shape::ShapeInstance;
 use glam::Vec2;

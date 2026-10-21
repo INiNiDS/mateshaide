@@ -1,12 +1,12 @@
-use glam::Vec2;
-use crate::canvas::Canvas;
-use crate::color::Color;
+use super::model::Canvas;
+use crate::core::Color;
 use crate::palette;
+use glam::Vec2;
 
 pub struct DrawTool {
     pub enabled: bool,
     pub width: f32,
-    pub color: Color
+    pub color: Color,
 }
 
 impl Default for DrawTool {
@@ -14,7 +14,7 @@ impl Default for DrawTool {
         Self {
             enabled: false,
             width: 4.0,
-            color: palette::GRAY_900
+            color: palette::GRAY_900,
         }
     }
 }

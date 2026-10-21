@@ -52,7 +52,7 @@ impl Camera {
         let d = world - self.offset;
         Vec2::new(
             d.x * self.zoom + self.screen_size.x / 2.0,
-            -d.y * self.zoom + self.screen_size.y / 2.0
+            -d.y * self.zoom + self.screen_size.y / 2.0,
         )
     }
 

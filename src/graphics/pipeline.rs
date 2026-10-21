@@ -1,4 +1,4 @@
-use crate::shape::ShapeInstance;
+use crate::shape::instance::ShapeInstance;
 
 pub struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
@@ -42,18 +42,16 @@ impl RenderPipeline {
             },
             depth_stencil: None,
             multisample: Default::default(),
-            fragment: Some(
-                wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }
-            ),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
             multiview_mask: None,
             cache: None,
         });

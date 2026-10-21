@@ -201,7 +201,6 @@ impl FromStr for Color {
     }
 }
 
-
 impl From<[f32; 4]> for Color {
     fn from(rgba: [f32; 4]) -> Self {
         Self::new(rgba[0], rgba[1], rgba[2], rgba[3])
