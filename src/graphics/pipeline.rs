@@ -5,6 +5,7 @@ pub struct RenderPipeline {
 }
 
 impl RenderPipeline {
+    #[must_use]
     pub fn new(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
@@ -13,7 +14,7 @@ impl RenderPipeline {
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl.into()).into(),
+            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

@@ -64,7 +64,7 @@ impl Engine {
             &self.canvas.texts,
             &self.shapes,
             swatch,
-        )
+        );
     }
 
     pub fn update(&mut self) -> bool {
@@ -76,7 +76,7 @@ impl Engine {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.canvas.resize(width as f32, height as f32);
-        self.renderer.resize(PhysicalSize::new(width, height))
+        self.renderer.resize(PhysicalSize::new(width, height));
     }
 
     pub fn reset_frame_time(&mut self) {
@@ -93,11 +93,10 @@ impl Engine {
         let was_spawn = matches!(self.test_spawner.mode, Some(TestMode::Spawn));
         self.test_spawner.toggle_mode(TestMode::Spawn);
 
-        if !was_spawn && self.test_spawner.current.is_none() {
-            if let Some(kind) = self.shapes.kind("rect") {
+        if !was_spawn && self.test_spawner.current.is_none()
+            && let Some(kind) = self.shapes.kind("rect") {
                 self.test_spawner.select("rect", kind);
             }
-        }
     }
 
     pub fn select_test_shape(&mut self, name: &'static str) {

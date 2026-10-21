@@ -26,6 +26,7 @@ pub struct Canvas {
 }
 
 impl Canvas {
+    #[must_use]
     pub fn new(width: f32, height: f32) -> Self {
         Self {
             camera: Camera::new(width, height),
@@ -87,6 +88,7 @@ impl Canvas {
         self.history.redo(&mut self.instances)
     }
 
+    #[must_use]
     pub fn is_stroking(&self) -> bool {
         self.stroke_active
     }
@@ -146,6 +148,7 @@ impl Canvas {
         self.pan_samples.clear();
     }
 
+    #[must_use]
     pub fn is_panning(&self) -> bool {
         self.is_panning
     }

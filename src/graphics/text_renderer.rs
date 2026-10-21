@@ -32,6 +32,7 @@ pub struct TextLayer {
 }
 
 impl TextLayer {
+    #[must_use]
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let mut font_system = FontSystem::new();
         font_system.db_mut().load_font_data(FONT_BYTES.to_vec());
@@ -81,7 +82,7 @@ impl TextLayer {
             buffer.set_text(
                 &t.text,
                 &Attrs::new()
-                    .family(Family::Name("Roboto").into())
+                    .family(Family::Name("Roboto"))
                     .color(t.color.into()),
                 Shaping::Advanced,
                 None,
@@ -94,7 +95,7 @@ impl TextLayer {
                 top: screen.y,
                 scale: camera.zoom,
                 color: t.color,
-            })
+            });
         }
 
         match self.upload(device, queue, width, height) {

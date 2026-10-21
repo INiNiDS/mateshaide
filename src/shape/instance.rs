@@ -32,6 +32,7 @@ impl ShapeInstance {
         }
     }
 
+    #[must_use]
     pub fn with_params(mut self, a: [f32; 4], b: [f32; 4]) -> Self {
         self.a = a;
         self.b = b;
@@ -46,6 +47,7 @@ impl ShapeInstance {
             .with_params([width * 0.5, height * 0.5, 0.0, 0.0], [0.0; 4])
     }
 
+    #[must_use]
     pub fn contains_world(&self, p: Vec2) -> bool {
         let center = Vec2::new(self.center[0], self.center[1]);
         let half = Vec2::new(self.size[0], self.size[1]) * 0.5;
@@ -98,6 +100,7 @@ impl ShapeInstance {
             .with_params([l1.x, l1.y, l2.x, l2.y], [radius, 0.0, 0.0, 0.0])
     }
 
+    #[must_use]
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: size_of::<Self>() as wgpu::BufferAddress,

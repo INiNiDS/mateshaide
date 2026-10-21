@@ -27,6 +27,7 @@ impl<Ctx> Default for InputManager<Ctx> {
 }
 
 impl<Ctx> InputManager<Ctx> {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             actions: FastHashMap::default(),
@@ -71,34 +72,42 @@ impl<Ctx> InputManager<Ctx> {
         }
     }
 
+    #[must_use]
     pub fn is_key_down(&self, key: KeyCode) -> bool {
         self.key_down.contains(&key)
     }
 
+    #[must_use]
     pub fn is_mouse_down(&self, button: MouseButton) -> bool {
         self.mouse_buttons_down.contains(&button)
     }
 
+    #[must_use]
     pub fn cursor_position(&self) -> Vec2 {
         self.cursor_pos
     }
 
+    #[must_use]
     pub fn modifiers(&self) -> ModifiersState {
         self.modifiers
     }
 
+    #[must_use]
     pub fn is_ctrl(&self) -> bool {
         self.modifiers.control_key() || self.modifiers.super_key()
     }
 
+    #[must_use]
     pub fn is_alt(&self) -> bool {
         self.modifiers.alt_key()
     }
 
+    #[must_use]
     pub fn is_shift(&self) -> bool {
         self.modifiers.shift_key()
     }
 
+    #[must_use]
     pub fn find_matching_action(&self, trigger: InputTrigger) -> Option<ActionID> {
         let shortcut = Shortcut {
             trigger,

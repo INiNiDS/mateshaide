@@ -78,8 +78,7 @@ impl TestSpawner {
         let idx = TEST_PALETTE
             .iter()
             .position(|&c| c == self.picked_color)
-            .map(|i| (i + 1) % TEST_PALETTE.len())
-            .unwrap_or(0);
+            .map_or(0, |i| (i + 1) % TEST_PALETTE.len());
         self.picked_color = TEST_PALETTE[idx];
         tracing::info!("test picked color: {:?}", self.picked_color);
     }

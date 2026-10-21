@@ -16,6 +16,7 @@ pub struct Camera {
 }
 
 impl Camera {
+    #[must_use]
     pub fn new(width: f32, height: f32) -> Self {
         Self {
             offset: Vec2::ZERO,
@@ -28,6 +29,7 @@ impl Camera {
         self.screen_size = Vec2::new(width.max(1.0), height.max(1.0));
     }
 
+    #[must_use]
     pub fn build_view_proj(&self) -> Mat4 {
         let half_w = (self.screen_size.x * 0.5) / self.zoom;
         let half_h = (self.screen_size.y * 0.5) / self.zoom;
@@ -40,6 +42,7 @@ impl Camera {
         glam::camera::rh::proj::directx::orthographic(left, right, bottom, top, -1.0, 1.0)
     }
 
+    #[must_use]
     pub fn screen_to_world(&self, screen_pos: Vec2) -> Vec2 {
         let center_offset = screen_pos - self.screen_size * 0.5;
         Vec2::new(
@@ -48,6 +51,7 @@ impl Camera {
         )
     }
 
+    #[must_use]
     pub fn world_to_screen(&self, world: Vec2) -> Vec2 {
         let d = world - self.offset;
         Vec2::new(
@@ -66,6 +70,7 @@ impl Camera {
         self.offset += old_world - new_world;
     }
 
+    #[must_use]
     pub fn uniform(&self) -> CameraUniform {
         let view_proj = self.build_view_proj();
         CameraUniform {

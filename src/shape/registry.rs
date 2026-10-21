@@ -14,6 +14,7 @@ pub struct ShapeRegistry {
 }
 
 impl ShapeRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -59,14 +60,17 @@ impl ShapeRegistry {
         Ok(self.push_kind(name, fn_name))
     }
 
+    #[must_use]
     pub fn kind(&self, name: &str) -> Option<u32> {
         self.kinds.get(name).copied()
     }
 
+    #[must_use]
     pub fn version(&self) -> u64 {
         self.version
     }
 
+    #[must_use]
     pub fn build_wgsl(&self) -> String {
         let mut s = String::from(include_str!("shape_base.wgsl"));
         s += &self.wgsl;

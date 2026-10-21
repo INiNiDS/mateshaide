@@ -28,14 +28,17 @@ impl Color {
     pub const CYAN: Self = Self::rgb(0.0, 1.0, 1.0);
     pub const MAGENTA: Self = Self::rgb(1.0, 0.0, 1.0);
 
+    #[must_use]
     pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
 
+    #[must_use]
     pub const fn rgb(r: f32, g: f32, b: f32) -> Self {
         Self { r, g, b, a: 1.0 }
     }
 
+    #[must_use]
     pub const fn hexa(v: u32) -> Self {
         Self::rgba8(
             ((v >> 24) & 0xFF) as u8,
@@ -45,6 +48,7 @@ impl Color {
         )
     }
 
+    #[must_use]
     pub const fn hex(v: u32) -> Self {
         Self::rgba8(
             ((v >> 16) & 0xFF) as u8,
@@ -54,6 +58,7 @@ impl Color {
         )
     }
 
+    #[must_use]
     pub const fn rgba8(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self::new(
             (r as f32) / 255.0,
@@ -63,6 +68,7 @@ impl Color {
         )
     }
 
+    #[must_use]
     pub fn from_hsv(h: f32, s: f32, v: f32) -> Self {
         let h = h.rem_euclid(360.0) / 60.0;
         let c = s * v;
@@ -79,31 +85,37 @@ impl Color {
         Self::rgb(r + m, g + m, b + m)
     }
 
+    #[must_use]
     pub fn to_array(&self) -> [f32; 4] {
         [self.r, self.g, self.b, self.a]
     }
 
+    #[must_use]
     pub fn to_array3(&self) -> [f32; 3] {
         [self.r, self.g, self.b]
     }
 
+    #[must_use]
     pub fn to_vec4(&self) -> Vec4 {
         Vec4::new(self.r, self.g, self.b, self.a)
     }
 
+    #[must_use]
     pub fn to_vec3(&self) -> Vec3 {
         Vec3::new(self.r, self.g, self.b)
     }
 
+    #[must_use]
     pub fn to_wgpu(&self) -> wgpu::Color {
         wgpu::Color {
-            r: self.r as f64,
-            g: self.g as f64,
-            b: self.b as f64,
-            a: self.a as f64,
+            r: f64::from(self.r),
+            g: f64::from(self.g),
+            b: f64::from(self.b),
+            a: f64::from(self.a),
         }
     }
 
+    #[must_use]
     pub fn to_linear(&self) -> Self {
         Self::new(
             srgb_to_linear(self.r),
@@ -113,6 +125,7 @@ impl Color {
         )
     }
 
+    #[must_use]
     pub fn to_srgb(&self) -> Self {
         Self::new(
             linear_to_srgb(self.r),
@@ -122,6 +135,7 @@ impl Color {
         )
     }
 
+    #[must_use]
     pub fn for_surface(self, format: wgpu::TextureFormat) -> Self {
         if format.is_srgb() {
             self.to_linear()
@@ -130,10 +144,12 @@ impl Color {
         }
     }
 
+    #[must_use]
     pub fn with_alpha(self, a: f32) -> Self {
         Self { a, ..self }
     }
 
+    #[must_use]
     pub fn lerp(self, other: Self, t: f32) -> Self {
         let t = t.clamp(0.0, 1.0);
         Self::new(
@@ -144,10 +160,12 @@ impl Color {
         )
     }
 
+    #[must_use]
     pub fn lighten(self, t: f32) -> Self {
         self.lerp(Self::WHITE, t)
     }
 
+    #[must_use]
     pub fn darken(self, t: f32) -> Self {
         self.lerp(Self::BLACK, t)
     }
