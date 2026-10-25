@@ -37,6 +37,9 @@ pub fn page_tiles(content: Rect, items: &[Rect]) -> Result<Vec<Rect>, ExportErro
             }
         }
     }
+    if tiles.len() > MAX_PAGES {
+        return Err(ExportError::TooManyPages(tiles.len()));
+    }
     Ok(tiles)
 }
 

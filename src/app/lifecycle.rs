@@ -1,6 +1,7 @@
-use std::rc::Rc;
 use super::{App, demo};
 use crate::engine::Engine;
+use glam::Vec2;
+use std::rc::Rc;
 use std::sync::Arc;
 use tracing::info;
 use winit::application::ApplicationHandler;
@@ -38,7 +39,9 @@ impl ApplicationHandler for App {
                     tracing::error!("failed to init engine: {err}");
 
                     #[cfg(target_arch = "wasm32")]
-                    js_bridge::show_fallback(&format!("engine init failed: {err}"));
+                    crate::wasm::bridge::js_bridge::show_fallback(&format!(
+                        "engine init failed: {err}"
+                    ));
                 }
             }
         };
@@ -68,7 +71,9 @@ impl ApplicationHandler for App {
         }
 
         let mut engine_guard = self.engine.borrow_mut();
-        let Some(engine) = engine_guard.as_mut() else { return };
+        let Some(engine) = engine_guard.as_mut() else {
+            return;
+        };
 
         match &event {
             WindowEvent::RedrawRequested => {
@@ -83,6 +88,9 @@ impl ApplicationHandler for App {
         }
 
         if engine.is_capturing() {
+            if let WindowEvent::CursorMoved { position, .. } = &event {
+                engine.capture_cursor = Vec2::new(position.x as f32, position.y as f32);
+            }
             Self::handle_capture_event(engine, &event, &window);
             return;
         }

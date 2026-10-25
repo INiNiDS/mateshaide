@@ -1,6 +1,7 @@
 pub fn save_bytes(data: &[u8], mime: &str, filename: &str) {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        let _ = mime;
         match std::fs::write(filename, data) {
             Ok(()) => tracing::info!("Saved {} ({} bytes)", filename, data.len()),
             Err(e) => {
@@ -41,29 +42,49 @@ pub fn copy_image(rgba: &[u8], width: u32, height: u32) {
     native::copy_image(rgba, width, height);
 
     #[cfg(target_arch = "wasm32")]
-    {
-        let _ = (width, height);
-        wasm::copy_image(rgba);
-    }
+    wasm::copy_image(rgba, width, height);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
+    use arboard::{Clipboard, ImageData};
+    use std::borrow::Cow;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static CLIPBOARD: RefCell<Option<Clipboard>> = const { RefCell::new(None) };
+    }
+
     pub fn copy_image(rgba: &[u8], width: u32, height: u32) {
-        match arboard::Clipboard::new() {
-            Ok(mut clipboard) => {
-                let img = arboard::ImageData {
-                    width: width as usize,
-                    height: height as usize,
-                    bytes: std::borrow::Cow::Borrowed(rgba),
-                };
-                match clipboard.set_image(img) {
-                    Ok(()) => tracing::info!("copied to clipboard"),
-                    Err(e) => tracing::error!("clipboard error: {e}"),
+        CLIPBOARD.with(|slot| {
+            let mut slot = slot.borrow_mut();
+
+            if slot.is_none() {
+                match Clipboard::new() {
+                    Ok(cb) => *slot = Some(cb),
+                    Err(e) => {
+                        tracing::error!("clipboard unavailable: {e}");
+                        return;
+                    }
                 }
             }
-            Err(e) => tracing::error!("clipboard unavailable: {e}"),
-        }
+
+            let Some(clipboard) = slot.as_mut() else { return };
+
+            let img = ImageData {
+                width: width as usize,
+                height: height as usize,
+                bytes: Cow::Borrowed(rgba),
+            };
+
+            match clipboard.set_image(img) {
+                Ok(()) => tracing::info!("copied to clipboard"),
+                Err(e) => {
+                    tracing::error!("clipboard error: {e}");
+                    *slot = None;
+                }
+            }
+        });
     }
 }
 
@@ -92,11 +113,18 @@ mod wasm {
         js_sys::eval(&script).ok();
     }
 
-    pub fn copy_image(rgba: &[u8]) {
+    pub fn copy_image(rgba: &[u8], width: u32, height: u32) {
+        let png = match crate::export::png::encode(rgba, width, height) {
+            Ok(png) => png,
+            Err(e) => {
+                tracing::error!("failed to encode clipboard image: {e}");
+                return;
+            }
+        };
         let window = web_sys::window().expect("no global window");
 
-        let arr = js_sys::Uint8Array::new_with_length(rgba.len() as u32);
-        arr.copy_from(rgba);
+        let arr = js_sys::Uint8Array::new_with_length(png.len() as u32);
+        arr.copy_from(&png);
         js_sys::Reflect::set(&window, &"__matesha_clip".into(), &arr).expect("set __matesha_clip");
 
         let _ = js_sys::eval(

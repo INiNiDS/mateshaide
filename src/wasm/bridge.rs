@@ -1,6 +1,6 @@
 
 #[cfg(target_arch = "wasm32")]
-mod js_bridge {
+pub mod js_bridge {
     #[wasm_bindgen::prelude::wasm_bindgen]
     extern "C" {
         #[wasm_bindgen::prelude::wasm_bindgen(js_name = showFallback)]

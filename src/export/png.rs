@@ -2,7 +2,7 @@ use crate::export::ExportError;
 use crate::export::bounds::Rect;
 use image::{DynamicImage, ImageFormat, RgbaImage};
 use std::io::Cursor;
-use std::time::Instant;
+use web_time::Instant;
 
 const SUPERSAMPLE: f32 = 2.0;
 const MIN_SIDE: f32 = 256.0;

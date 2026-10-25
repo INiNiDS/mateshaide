@@ -1,4 +1,3 @@
-use tracing::{error, info};
 use crate::Engine;
 
 pub mod bounds;
@@ -31,21 +30,9 @@ pub enum ExportError {
 }
 
 pub fn export_to_file(engine: &mut Engine, format: ExportFormat) {
-    let (result, ext, mime) = match format {
-        ExportFormat::Png => (engine.export_png(), "png", "image/png"),
-        ExportFormat::Pdf => (engine.export_pdf(), "pdf", "application/pdf"),
-    };
-
-    match result {
-        Ok(bytes) => {
-            let stamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            let filename = format!("mateshaide-{stamp}.{ext}");
-            save::save_bytes(&bytes, mime, &filename);
-        }
-        Err(e) => error!("export {ext} failed: {e}"),
+    match format {
+        ExportFormat::Png => engine.begin_png_capture(),
+        ExportFormat::Pdf => engine.begin_pdf_export(),
     }
 }
 

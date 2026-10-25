@@ -1,3 +1,4 @@
+use crate::graphics::capture_overlay::ButtonAction;
 use crate::{App, Engine, InputManager, InputUpdate};
 use glam::Vec2;
 use winit::event::{ElementState, MouseButton};
@@ -13,77 +14,90 @@ impl App {
         {
             if let Some(win) = web_sys::window() {
                 let dpr = win.device_pixel_ratio();
-
                 if let (Ok(w), Ok(h)) = (win.inner_width(), win.inner_height()) {
-                    if let (Some(w_val), Some(h_val)) = (w.as_f64(), h.as_f64()) {
-                        let real_w = (w_val * dpr).round() as u32;
-                        let real_h = (h_val * dpr).round() as u32;
-
-                        if real_w > 0 && real_h > 0 {
-                            current.width = real_w;
-                            current.height = real_h;
+                    if let (Some(wv), Some(hv)) = (w.as_f64(), h.as_f64()) {
+                        let rw = (wv * dpr).round() as u32;
+                        let rh = (hv * dpr).round() as u32;
+                        if rw > 0 && rh > 0 {
+                            current.width = rw;
+                            current.height = rh;
                         }
                     }
                 }
             }
         }
 
-        let engine_size = engine.size();
-
+        let es = engine.size();
         if current.width > 0
             && current.height > 0
-            && (current.width != engine_size.width || current.height != engine_size.height)
+            && (current.width != es.width || current.height != es.height)
         {
             engine.resize(current.width, current.height);
         }
 
-        let is_gliding = engine.update();
-
+        let gliding = engine.update();
         if current.width > 0 && current.height > 0 {
             engine.redraw();
         }
-
-        if is_gliding {
+        if gliding {
             window.request_redraw();
         }
     }
 
-    pub(super) fn handle_window_resized(
-        window: &Window,
-        engine: &mut Engine,
-        width: u32,
-        height: u32,
-    ) {
-        if width > 0 && height > 0 {
-            engine.resize(width, height);
+    pub(super) fn handle_window_resized(window: &Window, engine: &mut Engine, w: u32, h: u32) {
+        if w > 0 && h > 0 {
+            engine.resize(w, h);
             window.request_redraw();
         }
     }
 
+    // HIGH COMPLEXITY TODO
     pub(super) fn handle_capture_event(
         engine: &mut Engine,
         event: &winit::event::WindowEvent,
         window: &Window,
     ) {
-        if let winit::event::WindowEvent::KeyboardInput { event, .. } = event
-            && event.state == ElementState::Pressed
-            && let PhysicalKey::Code(key) = event.physical_key
-        {
-            match key {
-                KeyCode::Escape => {
-                    engine.dismiss_capture();
-                    window.request_redraw();
+        match event {
+            winit::event::WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed {
+                    if let PhysicalKey::Code(key) = event.physical_key {
+                        match key {
+                            KeyCode::Escape => {
+                                engine.dismiss_capture();
+                                window.request_redraw();
+                            }
+                            KeyCode::KeyS if engine.is_in_capture_preview() => {
+                                engine.save_capture();
+                                window.request_redraw();
+                            }
+                            KeyCode::KeyC if engine.is_in_capture_preview() => {
+                                engine.copy_capture();
+                                window.request_redraw();
+                            }
+                            _ => {}
+                        }
+                    }
                 }
-                KeyCode::KeyS if engine.is_in_capture_preview() => {
-                    engine.save_capture();
-                    window.request_redraw();
-                }
-                KeyCode::KeyC if engine.is_in_capture_preview() => {
-                    engine.copy_capture();
-                    window.request_redraw();
-                }
-                _ => {}
             }
+
+            winit::event::WindowEvent::MouseInput { state, button, .. } => {
+                if *state == ElementState::Pressed && *button == MouseButton::Left {
+                    let cursor = engine.capture_cursor;
+                    match engine.check_button_click(cursor) {
+                        Some(ButtonAction::Save) => {
+                            engine.save_capture();
+                            window.request_redraw();
+                        }
+                        Some(ButtonAction::Copy) => {
+                            engine.copy_capture();
+                            window.request_redraw();
+                        }
+                        None => {}
+                    }
+                }
+            }
+
+            _ => {}
         }
     }
 
@@ -98,17 +112,15 @@ impl App {
                 window.request_redraw();
             }
             InputUpdate::None => {}
-            InputUpdate::FocusLost => {
-                Self::handle_focus_lost(engine, window);
-            }
+            InputUpdate::FocusLost => Self::handle_focus_lost(engine, window),
             InputUpdate::CursorMoved { position, delta } => {
-                Self::handle_cursor_moved(input, engine, position, window, delta);
+                Self::handle_cursor_moved(input, engine, position, window, delta)
             }
             InputUpdate::MouseWheel { delta } => {
-                Self::handle_mouse_wheel(input, engine, delta, window);
+                Self::handle_mouse_wheel(input, engine, delta, window)
             }
             InputUpdate::MouseButton { button, state } => {
-                Self::handle_mouse_button(input, engine, button, state, window);
+                Self::handle_mouse_button(input, engine, button, state, window)
             }
         }
     }
@@ -142,9 +154,9 @@ impl App {
                     }
                 }
                 ElementState::Released => {
-                    let still_holding = input.is_mouse_down(MouseButton::Middle)
+                    let still = input.is_mouse_down(MouseButton::Middle)
                         || input.is_mouse_down(MouseButton::Right);
-                    if !still_holding {
+                    if !still {
                         engine.canvas.end_pan();
                         engine.reset_frame_time();
                         window.request_redraw();
@@ -158,7 +170,7 @@ impl App {
         if input.is_ctrl() {
             engine.canvas.zoom(input.cursor_position(), delta.y);
         } else {
-            let pan_delta = if input.is_shift() {
+            let pd = if input.is_shift() {
                 let x = if delta.x.abs() > 0.001 {
                     delta.x
                 } else {
@@ -168,7 +180,7 @@ impl App {
             } else {
                 Vec2::new(delta.x * 32.0, delta.y * 32.0)
             };
-            engine.canvas.pan(pan_delta);
+            engine.canvas.pan(pd);
         }
         window.request_redraw();
     }
@@ -181,14 +193,13 @@ impl App {
         delta: Vec2,
     ) {
         engine.test_spawner.cursor_screen = position;
-
         if engine.canvas.is_stroking() {
             engine.draw.point(&mut engine.canvas, position);
             window.request_redraw();
         }
-        let is_panning =
+        let panning =
             input.is_mouse_down(MouseButton::Right) || input.is_mouse_down(MouseButton::Middle);
-        if is_panning {
+        if panning {
             engine.canvas.track_pan(delta);
             window.request_redraw();
         }

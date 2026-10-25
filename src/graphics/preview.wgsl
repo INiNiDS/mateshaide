@@ -1,4 +1,4 @@
-struct Uniforms {
+struct U {
     rect: vec4<f32>,
     opacity: f32,
     _pad0: f32,
@@ -6,7 +6,7 @@ struct Uniforms {
     _pad2: f32,
 };
 
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var tex: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
 
@@ -17,30 +17,25 @@ struct VSOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
-    let r = uniforms.rect;
+    let r = u.rect;
     var corners = array<vec2<f32>, 4>(
-        vec2(r.x, r.y),
-        vec2(r.z, r.y),
-        vec2(r.x, r.w),
-        vec2(r.z, r.w),
+        vec2(r.x, r.y), vec2(r.z, r.y),
+        vec2(r.x, r.w), vec2(r.z, r.w),
     );
     var uvs = array<vec2<f32>, 4>(
-        vec2(0.0, 1.0),
-        vec2(1.0, 1.0),
-        vec2(0.0, 0.0),
-        vec2(1.0, 0.0),
+        vec2(0.0, 1.0), vec2(1.0, 1.0),
+        vec2(0.0, 0.0), vec2(1.0, 0.0),
     );
-    var idx_arr = array<u32, 6>(0u, 1u, 2u, 2u, 1u, 3u);
-    let idx = idx_arr[vi];
-
-    var out: VSOut;
-    out.pos = vec4(corners[idx], 0.0, 1.0);
-    out.uv = uvs[idx];
-    return out;
+    var idx = array<u32, 6>(0u, 1u, 2u, 2u, 1u, 3u);
+    let i = idx[vi];
+    var o: VSOut;
+    o.pos = vec4(corners[i], 0.0, 1.0);
+    o.uv = uvs[i];
+    return o;
 }
 
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
-    let color = textureSample(tex, samp, in.uv);
-    return vec4(color.rgb, color.a * uniforms.opacity);
+    let c = textureSample(tex, samp, in.uv);
+    return vec4(c.rgb, c.a * u.opacity);
 }
