@@ -904,15 +904,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab85b9b05e3978cc9a9cf8fea7f01b494e1a09ed3037e16ba39edc7a29eb61a"
 
 [[package]]
-name = "futures-channel"
-version = "0.3.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4"
-dependencies = [
- "futures-core",
-]
-
-[[package]]
 name = "futures-core"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1410,11 +1401,10 @@ dependencies = [
  "arboard",
  "bytemuck",
  "console_error_panic_hook",
- "futures-channel",
  "glam",
  "glyphon",
  "hashbrown 0.17.1",
- "image",
+ "js-sys",
  "pollster 1.0.1",
  "printpdf",
  "rfd",

@@ -1,7 +1,9 @@
 use crate::canvas::camera::{Camera, CameraUniform};
 use crate::canvas::text::CanvasText;
 use crate::core::color::Color;
-use crate::graphics::capture_overlay::{self, CaptureOverlay, CaptureOverlayParams};
+use crate::graphics::capture_overlay::{
+    self, CaptureOverlay, CaptureOverlayParams,
+};
 use crate::graphics::overlay::{OVERLAY_CAP, build_swatch_instances};
 use crate::graphics::pipeline::RenderPipeline;
 use crate::graphics::text_renderer::TextLayer;
@@ -270,7 +272,7 @@ impl Renderer {
         texts: &[CanvasText],
         shapes: &ShapeRegistry,
         swatch: Option<Color>,
-        capture: &CaptureOverlayParams<'_>,
+        capture: CaptureOverlayParams<'_>,
     ) {
         self.update_pipeline(shapes);
         let uniform = camera.uniform();
@@ -361,15 +363,7 @@ impl Renderer {
 
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Overlay Render Pass"),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
+                color_attachments: &[Some(Self::load_attachment(&view))],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -390,7 +384,7 @@ impl Renderer {
             }
 
             CaptureOverlayParams::Flash { progress } => {
-                let bars = capture_overlay::flash_bars(*progress);
+                let bars = capture_overlay::flash_bars(progress);
                 if !bars.is_empty() {
                     self.queue.write_buffer(
                         &self.overlay_instance_buffer,
@@ -424,15 +418,15 @@ impl Renderer {
                 self.capture_overlay
                     .ensure_texture(&self.device, &self.queue, image);
 
-                let mut overlay = capture_overlay::dark_backdrop(*backdrop_alpha);
-                overlay.extend(capture_overlay::photo_card_border(*rect, 0.012, *opacity));
-                if flash_alpha > &0.001 {
+                let mut overlay = capture_overlay::dark_backdrop(backdrop_alpha);
+                overlay.extend(capture_overlay::photo_card_border(rect, 0.012, opacity));
+                if flash_alpha > 0.001 {
                     overlay.push(ShapeInstance::rect(
                         -1.0,
                         -1.0,
                         2.0,
                         2.0,
-                        Color::new(1.0, 1.0, 1.0, *flash_alpha),
+                        Color::new(1.0, 1.0, 1.0, flash_alpha),
                     ));
                 }
 
@@ -463,7 +457,7 @@ impl Renderer {
                 }
 
                 self.capture_overlay
-                    .render_image(&self.queue, &mut pass, *rect, *opacity);
+                    .render_image(&self.queue, &mut pass, rect, opacity);
             }
         }
 
@@ -473,7 +467,7 @@ impl Renderer {
         self.text.trim();
     }
 
-    pub async fn export_rgba(
+    pub fn export_rgba(
         &mut self,
         camera: &Camera,
         instances: &[ShapeInstance],
@@ -595,18 +589,20 @@ impl Renderer {
         self.queue.submit(Some(encoder.finish()));
 
         let slice = readback.slice(..);
-        let (tx, rx) = futures_channel::oneshot::channel();
+        let (tx, rx) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |result| {
-            tx.send(result).unwrap();
+            let _ = tx.send(result);
         });
 
         self.device
             .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
+            .map_err(|e| RendererError::Export(format!("device poll failed: {e:?}")))?;
 
-        rx.await
-            .map_err(|_| RendererError::Export("readback canceled".into()))?
-            .map_err(|e| RendererError::Export(e.to_string()))?;
+        match rx.try_recv() {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(RendererError::Export(e.to_string())),
+            Err(_) => return Err(RendererError::Export("readback not ready".into())),
+        }
 
         let mut pixels = Vec::with_capacity((unpadded_row * height) as usize);
         {
@@ -659,6 +655,7 @@ impl Renderer {
             },
         }
     }
+
 
     fn load_attachment(view: &wgpu::TextureView) -> RenderPassColorAttachment<'_> {
         RenderPassColorAttachment {

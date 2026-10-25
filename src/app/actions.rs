@@ -1,13 +1,12 @@
 use crate::engine::Engine;
+use crate::export::ExportFormat;
 use crate::input::{InputManager, Shortcut};
 use winit::keyboard::KeyCode;
-use crate::export::ExportFormat;
 
 pub(super) fn register(input: &mut InputManager) {
     register_draw_actions(input);
     register_history_actions(input);
     register_camera_actions(input);
-    #[cfg(not(target_arch = "wasm32"))]
     register_export_actions(input);
 }
 
@@ -65,7 +64,6 @@ fn register_camera_actions(input: &mut InputManager) {
     input.bind(Shortcut::key(KeyCode::Numpad0).ctrl(), "reset_view");
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn register_export_actions(input: &mut InputManager) {
     input.register_action("export_png", |engine: &mut Engine| {
         engine.begin_png_capture();

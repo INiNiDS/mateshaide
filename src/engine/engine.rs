@@ -1,18 +1,20 @@
 use crate::canvas::Canvas;
 use crate::canvas::DrawTool;
 use crate::dev::{TestMode, TestSpawner};
+use crate::export::png::CapturedPng;
 use crate::export::ExportError;
 use crate::export::bounds::{content_bounds, frame_camera, item_rects};
 use crate::export::pdf::{PdfBuilder, RASTER_H, RASTER_W, page_tiles};
-use crate::export::png::{CaptureState, CapturedPng};
-use crate::graphics::{capture_overlay, Renderer};
+use crate::graphics::capture_overlay::{self, CaptureOverlayParams};
+use crate::graphics::Renderer;
 use crate::shape::{ShapeError, ShapeRegistry};
 use crate::{RendererError, export};
 use std::sync::Arc;
 use web_time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
-use crate::graphics::capture_overlay::CaptureOverlayParams;
+use export::png::CaptureState;
+
 
 const CONVERGE_DURATION_SECS: f32 = 0.35;
 const FLASH_FADE_SECS: f32 = 0.15;
@@ -44,8 +46,8 @@ impl Engine {
             renderer,
             draw: DrawTool::default(),
             last_frame_time: Instant::now(),
+            test_spawner: TestSpawner::default(),
             capture: CaptureState::default(),
-            test_spawner: TestSpawner::default(), // Guess what
         })
     }
 
@@ -65,7 +67,7 @@ impl Engine {
     }
 
     pub fn redraw(&mut self) {
-        let swatch = if self.test_spawner.mode == Some(TestMode::Spawn) {
+        let swatch = if self.capture.is_idle() && self.test_spawner.mode == Some(TestMode::Spawn) {
             self.test_spawner.preview_color()
         } else {
             None
@@ -83,7 +85,7 @@ impl Engine {
             &self.canvas.texts,
             &self.shapes,
             swatch,
-            &capture_params,
+            capture_params,
         );
     }
 
@@ -111,9 +113,8 @@ impl Engine {
         self.renderer.size()
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn begin_png_capture(&mut self) {
-        match pollster::block_on(self.capture_frame()) {
+        match self.capture_frame() {
             Ok(image) => {
                 self.capture = CaptureState::Converge {
                     started: Instant::now(),
@@ -124,22 +125,16 @@ impl Engine {
                 tracing::warn!("nothing to capture: canvas is empty");
             }
             Err(e) => {
-                tracing::error!("failed to capture frame: {e}");
+                tracing::error!("PNG capture failed: {e}");
             }
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
-    pub fn begin_png_capture(&mut self) {
-        tracing::warn!("PNG capture animation not yet supported on wasm");
-    }
-
-    async fn capture_frame(&mut self) -> Result<CapturedPng, ExportError> {
+    fn capture_frame(&mut self) -> Result<CapturedPng, ExportError> {
         let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
         let frame = content_bounds(&rects)
             .ok_or(ExportError::Empty)?
             .padded(export::PADDING);
-
         let (w, h) = export::png::pixel_size(frame);
         let camera = frame_camera(frame, w, h);
 
@@ -152,11 +147,12 @@ impl Engine {
                 &self.shapes,
                 w,
                 h,
-            )
-            .await?;
+            )?;
+
+        let png = export::png::encode(&rgba, w, h)?;
 
         Ok(CapturedPng {
-            png: Vec::new(),
+            png,
             rgba,
             width: w,
             height: h,
@@ -171,145 +167,20 @@ impl Engine {
         self.capture.is_preview()
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn save_capture(&mut self) {
         if let CaptureState::Preview { image, .. } = &self.capture {
-            export::save_capture_with_dialog(&image.png);
+            export::save_capture(&image.png);
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn copy_capture(&mut self) {
         if let CaptureState::Preview { image, .. } = &self.capture {
-            export::copy_capture_to_clipboard(&image.rgba, image.width, image.height);
+            export::copy_capture(&image.rgba, image.width, image.height);
         }
     }
 
     pub fn dismiss_capture(&mut self) {
         self.capture = CaptureState::Idle;
-    }
-
-    // Test section (will be removed later)
-
-    pub fn toggle_test_spawn(&mut self) {
-        let was_spawn = matches!(self.test_spawner.mode, Some(TestMode::Spawn));
-        self.test_spawner.toggle_mode(TestMode::Spawn);
-
-        if !was_spawn
-            && self.test_spawner.current.is_none()
-            && let Some(kind) = self.shapes.kind("rect")
-        {
-            self.test_spawner.select("rect", kind);
-        }
-    }
-
-    pub fn select_test_shape(&mut self, name: &'static str) {
-        if !matches!(self.test_spawner.mode, Some(TestMode::Spawn)) {
-            tracing::warn!("Test spawn: not in spawn mode, cannot select shape");
-            return;
-        }
-
-        if let Some(kind) = self.shapes.kind(name) {
-            self.test_spawner.select(name, kind);
-        } else {
-            tracing::warn!("Test spawn: unknown shape kind '{name}'");
-        }
-    }
-
-    pub fn spawn_test_shape(&mut self) {
-        match self.test_spawner.mode {
-            Some(TestMode::Spawn) => {
-                self.test_spawner.spawn(&mut self.canvas);
-            }
-            Some(TestMode::Erase) => {
-                if self.test_spawner.erase_at_cursor(&mut self.canvas) {
-                    tracing::info!("Test spawn: erased shape at cursor");
-                } else {
-                    tracing::info!("Test spawn: no shape at cursor to erase");
-                }
-            }
-            None => {
-                tracing::warn!("Test spawn: not in spawn or erase mode, cannot spawn shape");
-            }
-        }
-    }
-
-    pub fn toggle_test_color_mode(&mut self) {
-        self.test_spawner.toggle_color_mode();
-    }
-
-    pub fn next_test_picked_color(&mut self) {
-        self.test_spawner.next_picked_color();
-    }
-
-    pub fn toggle_test_eraser(&mut self) {
-        self.test_spawner.toggle_mode(TestMode::Erase);
-    }
-
-    pub fn erase_test_at_cursor(&mut self) {
-        if self.test_spawner.erase_at_cursor(&mut self.canvas) {
-            tracing::info!("Test spawn: erased shape at cursor");
-        } else {
-            tracing::info!("Test spawn: no shape at cursor to erase");
-        }
-    }
-
-    pub fn undo(&mut self) -> bool {
-        self.canvas.undo()
-    }
-
-    pub fn redo(&mut self) -> bool {
-        self.canvas.redo()
-    }
-
-    pub async fn export_pdf(&mut self) -> Result<Vec<u8>, ExportError> {
-        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
-        let content = content_bounds(&rects).ok_or(ExportError::Empty)?;
-        let tiles = page_tiles(content, &rects)?;
-
-        let (w, h) = (RASTER_W, RASTER_H);
-        let mut builder = PdfBuilder::new();
-
-        for tile in tiles {
-            let camera = frame_camera(tile, w, h);
-            let rgba = self
-                .renderer
-                .export_rgba(
-                    &camera,
-                    &self.canvas.instances,
-                    &self.canvas.texts,
-                    &self.shapes,
-                    w,
-                    h,
-                )
-                .await?;
-            builder.add_page(rgba)?;
-        }
-        builder.finish()
-    }
-
-    pub async fn export_png(&mut self) -> Result<Vec<u8>, ExportError> {
-        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
-        let frame = content_bounds(&rects)
-            .ok_or(ExportError::Empty)?
-            .padded(export::PADDING);
-
-        let (w, h) = export::png::pixel_size(frame);
-        let camera = frame_camera(frame, w, h);
-
-        let rgba = self
-            .renderer
-            .export_rgba(
-                &camera,
-                &self.canvas.instances,
-                &self.canvas.texts,
-                &self.shapes,
-                w,
-                h,
-            )
-            .await?;
-
-        export::png::encode(&rgba, w, h)
     }
 
     fn update_capture(&mut self) -> bool {
@@ -321,7 +192,7 @@ impl Engine {
                 return (now - *shown_at).as_secs_f32() < PREVIEW_ENTER_SECS;
             }
             CaptureState::Converge { started, .. } => {
-                (now - *started).as_secs_f32() < CONVERGE_DURATION_SECS
+                (now - *started).as_secs_f32() >= CONVERGE_DURATION_SECS
             }
         };
 
@@ -331,7 +202,7 @@ impl Engine {
             {
                 self.capture = CaptureState::Preview {
                     image,
-                    shown_at: Instant::now(),
+                    shown_at: now,
                 };
             }
         }
@@ -346,12 +217,14 @@ impl Engine {
         let now = Instant::now();
         match capture {
             CaptureState::Idle => CaptureOverlayParams::None,
+
             CaptureState::Converge { started, .. } => {
                 let elapsed = (now - *started).as_secs_f32();
                 let progress = (elapsed / CONVERGE_DURATION_SECS).clamp(0.0, 1.0);
                 CaptureOverlayParams::Flash { progress }
-            },
-            CaptureState::Preview { shown_at, image } => {
+            }
+
+            CaptureState::Preview { image, shown_at } => {
                 let elapsed = (now - *shown_at).as_secs_f32();
 
                 let flash_alpha = (1.0 - elapsed / FLASH_FADE_SECS).clamp(0.0, 1.0);
@@ -378,10 +251,114 @@ impl Engine {
                     backdrop_alpha: 0.65 * opacity,
                     flash_alpha,
                     rect,
-                    opacity
+                    opacity,
                 }
             }
         }
+    }
+
+    pub fn toggle_test_spawn(&mut self) {
+        let was_spawn = matches!(self.test_spawner.mode, Some(TestMode::Spawn));
+        self.test_spawner.toggle_mode(TestMode::Spawn);
+
+        if !was_spawn
+            && self.test_spawner.current.is_none()
+            && let Some(kind) = self.shapes.kind("rect")
+        {
+            self.test_spawner.select("rect", kind);
+        }
+    }
+
+    pub fn select_test_shape(&mut self, name: &'static str) {
+        if !matches!(self.test_spawner.mode, Some(TestMode::Spawn)) {
+            tracing::warn!("Test spawn: not in spawn mode, cannot select shape");
+            return;
+        }
+        if let Some(kind) = self.shapes.kind(name) {
+            self.test_spawner.select(name, kind);
+        } else {
+            tracing::warn!("Test spawn: unknown shape kind '{name}'");
+        }
+    }
+
+    pub fn spawn_test_shape(&mut self) {
+        match self.test_spawner.mode {
+            Some(TestMode::Spawn) => self.test_spawner.spawn(&mut self.canvas),
+            Some(TestMode::Erase) => {
+                self.test_spawner.erase_at_cursor(&mut self.canvas);
+            }
+            None => {
+                tracing::warn!("Test spawn: not in spawn or erase mode");
+            }
+        }
+    }
+
+    pub fn toggle_test_color_mode(&mut self) {
+        self.test_spawner.toggle_color_mode();
+    }
+
+    pub fn next_test_picked_color(&mut self) {
+        self.test_spawner.next_picked_color();
+    }
+
+    pub fn toggle_test_eraser(&mut self) {
+        self.test_spawner.toggle_mode(TestMode::Erase);
+    }
+
+    pub fn erase_test_at_cursor(&mut self) {
+        self.test_spawner.erase_at_cursor(&mut self.canvas);
+    }
+
+    pub fn undo(&mut self) -> bool {
+        self.canvas.undo()
+    }
+
+    pub fn redo(&mut self) -> bool {
+        self.canvas.redo()
+    }
+
+    pub fn export_pdf(&mut self) -> Result<Vec<u8>, ExportError> {
+        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+        let content = content_bounds(&rects).ok_or(ExportError::Empty)?;
+        let tiles = page_tiles(content, &rects)?;
+
+        let (w, h) = (RASTER_W, RASTER_H);
+        let mut builder = PdfBuilder::new();
+
+        for tile in tiles {
+            let camera = frame_camera(tile, w, h);
+            let rgba = self.renderer.export_rgba(
+                &camera,
+                &self.canvas.instances,
+                &self.canvas.texts,
+                &self.shapes,
+                w,
+                h,
+            )?;
+            builder.add_page(rgba)?;
+        }
+        builder.finish()
+    }
+
+    pub fn export_png(&mut self) -> Result<Vec<u8>, ExportError> {
+        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+        let frame = content_bounds(&rects)
+            .ok_or(ExportError::Empty)?
+            .padded(export::PADDING);
+
+        let (w, h) = export::png::pixel_size(frame);
+        let camera = frame_camera(frame, w, h);
+
+        let rgba = self.renderer.export_rgba(
+            &camera,
+            &self.canvas.instances,
+            &self.canvas.texts,
+            &self.shapes,
+            w,
+            h,
+        )?;
+
+        export::png::encode(&rgba, w, h)
     }
 }
 
