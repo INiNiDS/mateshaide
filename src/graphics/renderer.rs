@@ -8,8 +8,8 @@ use crate::shape::instance::ShapeInstance;
 use crate::shape::registry::ShapeRegistry;
 use std::sync::Arc;
 use tracing::warn;
-use wgpu::{CurrentSurfaceTexture, SurfaceColorSpace};
-use wgpu::util::DeviceExt;
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use wgpu::{CurrentSurfaceTexture, RenderPassColorAttachment, SurfaceColorSpace};
 use winit::window::Window;
 
 pub struct Renderer {
@@ -109,7 +109,7 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::cast_slice(&[uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -162,7 +162,7 @@ impl Renderer {
                 params: glam::Vec4::ZERO,
             }
         };
-        let overlay_camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let overlay_camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Overlay Camera Buffer"),
             contents: bytemuck::cast_slice(&[indetity_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -266,15 +266,7 @@ impl Renderer {
         shapes: &ShapeRegistry,
         swatch: Option<Color>,
     ) {
-        if self.pipeline_version != shapes.version() {
-            self.render_pipeline = RenderPipeline::new(
-                &self.device,
-                &self.config,
-                &self.camera_bind_group_layout,
-                &shapes.build_wgsl(),
-            );
-            self.pipeline_version = shapes.version();
-        }
+        self.update_pipeline(shapes);
         let uniform = camera.uniform();
 
         self.queue
@@ -336,20 +328,7 @@ impl Renderer {
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.94,
-                            g: 0.945,
-                            b: 0.955,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
+                color_attachments: &[Some(Self::color_attachments(&view))],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -376,7 +355,7 @@ impl Renderer {
 
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Overlay Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                color_attachments: &[Some(RenderPassColorAttachment {
                     view: &view,
                     depth_slice: None,
                     resolve_target: None,
@@ -404,6 +383,193 @@ impl Renderer {
 
         self.text.trim();
     }
+
+    pub async fn export_rgba(
+        &mut self,
+        camera: &Camera,
+        instances: &[ShapeInstance],
+        texts: &[CanvasText],
+        shapes: &ShapeRegistry,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, RendererError> {
+        let max_dim = self.device.limits().max_texture_dimension_2d;
+        if width == 0 || height == 0 || width > max_dim || height > max_dim {
+            return Err(RendererError::Device(format!(
+                "Invalid export dimensions: {}x{}, max allowed: {}",
+                width, height, max_dim
+            )));
+        }
+        self.update_pipeline(shapes);
+
+        let uniform = camera.uniform();
+        let camera_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Export Camera Buffer"),
+            contents: bytemuck::cast_slice(&[uniform]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let camera_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Export Camera Bind Group"),
+            layout: &self.camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
+
+        let instance_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Export Instance Buffer"),
+            size: (instances.len().max(1) * size_of::<ShapeInstance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !instances.is_empty() {
+            self.queue
+                .write_buffer(&instance_buffer, 0, bytemuck::cast_slice(&instances));
+        }
+
+        self.text.prepare(&self.device, &self.queue, camera, texts);
+
+        let target = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Export Target"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let unpadded_row = width * 4;
+        let padded_row = unpadded_row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+
+        let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Export Readback Buffer"),
+            size: (padded_row * height) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Export Encoder"),
+            });
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Export Render Pass"),
+                color_attachments: &[Some(Self::color_attachments(&view))],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            self.render_pipeline.draw(
+                &mut pass,
+                &camera_bind_group,
+                &instance_buffer,
+                instances.len() as u32,
+            );
+            self.text.render(&mut pass);
+        }
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &target,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        self.queue.submit(Some(encoder.finish()));
+
+        let slice = readback.slice(..);
+        let (tx, rx) = futures_channel::oneshot::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            tx.send(result).unwrap();
+        });
+
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+
+        rx.await
+            .map_err(|_| RendererError::Export("readback canceled".into()))?
+            .map_err(|e| RendererError::Export(e.to_string()))?;
+
+        let mut pixels = Vec::with_capacity((unpadded_row * height) as usize);
+        {
+            let data = slice
+                .get_mapped_range()
+                .map_err(|e| RendererError::Export(format!("get_mapped_range failed: {e:?}")))?;
+            for row in 0..height as usize {
+                let start = row * padded_row as usize;
+                pixels.extend_from_slice(&data[start..start + unpadded_row as usize])
+            }
+        }
+        readback.unmap();
+
+        if matches!(
+            self.config.format,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+        ) {
+            for px in pixels.chunks_exact_mut(4) {
+                px.swap(0, 2);
+            }
+        }
+        Ok(pixels)
+    }
+
+    fn update_pipeline(&mut self, shapes: &ShapeRegistry) {
+        if self.pipeline_version != shapes.version() {
+            self.render_pipeline = RenderPipeline::new(
+                &self.device,
+                &self.config,
+                &self.camera_bind_group_layout,
+                &shapes.build_wgsl(),
+            );
+            self.pipeline_version = shapes.version();
+        }
+    }
+
+    const fn color_attachments(view: &wgpu::TextureView) -> RenderPassColorAttachment {
+        RenderPassColorAttachment {
+            view: &view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color {
+                    r: 0.94,
+                    g: 0.945,
+                    b: 0.955,
+                    a: 1.0,
+                }),
+                store: wgpu::StoreOp::Store,
+            },
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -414,4 +580,6 @@ pub enum RendererError {
     NoAdapter(String),
     #[error("failed to create device: {0}")]
     Device(String),
+    #[error("export failed: {0}")]
+    Export(String),
 }

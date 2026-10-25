@@ -1,8 +1,12 @@
 use crate::canvas::Canvas;
 use crate::canvas::DrawTool;
+use crate::dev::{TestMode, TestSpawner};
+use crate::export::ExportError;
+use crate::export::bounds::{content_bounds, frame_camera, item_rects};
+use crate::export::pdf::{PdfBuilder, RASTER_H, RASTER_W, page_tiles};
 use crate::graphics::Renderer;
 use crate::shape::{ShapeError, ShapeRegistry};
-use crate::dev::{TestMode, TestSpawner};
+use crate::{RendererError, export};
 use std::sync::Arc;
 use web_time::Instant;
 use winit::dpi::PhysicalSize;
@@ -93,10 +97,12 @@ impl Engine {
         let was_spawn = matches!(self.test_spawner.mode, Some(TestMode::Spawn));
         self.test_spawner.toggle_mode(TestMode::Spawn);
 
-        if !was_spawn && self.test_spawner.current.is_none()
-            && let Some(kind) = self.shapes.kind("rect") {
-                self.test_spawner.select("rect", kind);
-            }
+        if !was_spawn
+            && self.test_spawner.current.is_none()
+            && let Some(kind) = self.shapes.kind("rect")
+        {
+            self.test_spawner.select("rect", kind);
+        }
     }
 
     pub fn select_test_shape(&mut self, name: &'static str) {
@@ -157,6 +163,56 @@ impl Engine {
     pub fn redo(&mut self) -> bool {
         self.canvas.redo()
     }
+
+    pub async fn export_pdf(&mut self) -> Result<Vec<u8>, ExportError> {
+        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+        let content = content_bounds(&rects).ok_or(ExportError::Empty)?;
+        let tiles = page_tiles(content, &rects)?;
+
+        let (w, h) = (RASTER_W, RASTER_H);
+        let mut builder = PdfBuilder::new();
+
+        for tile in tiles {
+            let camera = frame_camera(tile, w, h);
+            let rgba = self
+                .renderer
+                .export_rgba(
+                    &camera,
+                    &self.canvas.instances,
+                    &self.canvas.texts,
+                    &self.shapes,
+                    w,
+                    h,
+                )
+                .await?;
+            builder.add_page(rgba)?;
+        }
+        builder.finish()
+    }
+
+    pub async fn export_png(&mut self) -> Result<Vec<u8>, ExportError> {
+        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+        let frame = content_bounds(&rects)
+            .ok_or(ExportError::Empty)?
+            .padded(export::PADDING);
+
+        let (w, h) = export::png::pixel_size(frame);
+        let camera = frame_camera(frame, w, h);
+
+        let rgba = self
+            .renderer
+            .export_rgba(
+                &camera,
+                &self.canvas.instances,
+                &self.canvas.texts,
+                &self.shapes,
+                w,
+                h,
+            )
+            .await?;
+
+        export::png::encode(rgba, w, h)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -164,5 +220,5 @@ pub enum EngineError {
     #[error(transparent)]
     Shape(#[from] ShapeError),
     #[error(transparent)]
-    Renderer(#[from] crate::graphics::RendererError),
+    Renderer(#[from] RendererError),
 }

@@ -7,6 +7,7 @@ pub mod graphics;
 pub mod input;
 pub mod shape;
 pub mod theme;
+pub mod export;
 
 pub use app::App;
 pub use canvas::{Camera, CameraUniform, Canvas, CanvasText, DrawTool};
