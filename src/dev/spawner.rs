@@ -1,5 +1,5 @@
 use crate::canvas::Canvas;
-use crate::color::Color;
+use crate::core::Color;
 use crate::palette;
 use crate::shape::ShapeInstance;
 use glam::Vec2;
@@ -78,8 +78,7 @@ impl TestSpawner {
         let idx = TEST_PALETTE
             .iter()
             .position(|&c| c == self.picked_color)
-            .map(|i| (i + 1) % TEST_PALETTE.len())
-            .unwrap_or(0);
+            .map_or(0, |i| (i + 1) % TEST_PALETTE.len());
         self.picked_color = TEST_PALETTE[idx];
         tracing::info!("test picked color: {:?}", self.picked_color);
     }
@@ -159,7 +158,7 @@ pub enum ColorMode {
 }
 
 impl ColorMode {
-    fn cycle(&self) -> Self {
+    fn cycle(self) -> Self {
         match self {
             ColorMode::Cycle => ColorMode::Fixed,
             ColorMode::Fixed => ColorMode::Picked,

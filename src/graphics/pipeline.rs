@@ -1,10 +1,12 @@
-use crate::shape::ShapeInstance;
+use wgpu::{MultisampleState, PipelineCompilationOptions};
+use crate::shape::instance::ShapeInstance;
 
 pub struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
 }
 
 impl RenderPipeline {
+    #[must_use]
     pub fn new(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
@@ -13,7 +15,7 @@ impl RenderPipeline {
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl.into()).into(),
+            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -28,7 +30,7 @@ impl RenderPipeline {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 buffers: &[Some(ShapeInstance::desc())],
             },
             primitive: wgpu::PrimitiveState {
@@ -41,19 +43,17 @@ impl RenderPipeline {
                 conservative: false,
             },
             depth_stencil: None,
-            multisample: Default::default(),
-            fragment: Some(
-                wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }
-            ),
+            multisample: MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
             multiview_mask: None,
             cache: None,
         });

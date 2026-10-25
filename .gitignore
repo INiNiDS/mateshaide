@@ -1,1 +1,5 @@
 /target
+pkg
+dist
+matesha_ide_bg.wasm
+matesha_ide.js

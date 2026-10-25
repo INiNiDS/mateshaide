@@ -1,4 +1,4 @@
-use crate::color::Color;
+use crate::core::color::Color;
 
 pub const TRANSPARENT: Color = Color::TRANSPARENT;
 pub const BLACK: Color = Color::BLACK;
