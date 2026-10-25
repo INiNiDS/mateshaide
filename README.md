@@ -63,6 +63,16 @@ Without Shift, it pans from top to bottom; with Shift, from left to right.
 
 You can undo by pressing Ctrl + Z and redo by pressing Ctrl + Y (or Ctrl + Shift + Z).
 
+### Drawing
+
+Press Ctrl + 9 to turn draw mode on or off. When it's on, hold the left mouse button and move the mouse to draw. Each stroke is saved in undo/redo history.
+
+### Export
+
+Press Ctrl + E to export the canvas to PNG. A preview will appear. Press S to save the image, C to copy it to the clipboard, or Esc to close the preview.
+
+Press Ctrl + P to export the canvas to PDF. The file is saved automatically when all pages are rendered.
+
 ## License
 
 The project is licensed under AGPL-3.0 and made for Hack Club Terra.
