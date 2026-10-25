@@ -2,6 +2,10 @@
 
 MateshaIDE is just like an IDE, but for math. If you have ever used an IDE like PyCharm, Visual Studio, Eclipse, etc., you know there are many features that make writing code easier. So MateshaIDE has many features, but for math.
 
+## Video-guide
+
+https://github.com/user-attachments/assets/84323845-0822-484b-a37e-0ab637b97aa0
+
 ## Status
 
 I'm still working on it. So far it's more of a coloring book. You can draw but can't write.
