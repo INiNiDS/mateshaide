@@ -1,9 +1,7 @@
 use crate::canvas::camera::{Camera, CameraUniform};
 use crate::canvas::text::CanvasText;
 use crate::core::color::Color;
-use crate::graphics::capture_overlay::{
-    self, CaptureOverlay, CaptureOverlayParams,
-};
+use crate::graphics::capture_overlay::{self, CaptureOverlay, CaptureOverlayParams};
 use crate::graphics::overlay::{OVERLAY_CAP, build_swatch_instances};
 use crate::graphics::pipeline::RenderPipeline;
 use crate::graphics::text_renderer::TextLayer;
@@ -383,16 +381,16 @@ impl Renderer {
                 self.capture_overlay.clear();
             }
 
-            CaptureOverlayParams::Flash { progress } => {
-                let bars = capture_overlay::flash_bars(progress);
-                if !bars.is_empty() {
+            CaptureOverlayParams::Converge { progress } => {
+                let glow = capture_overlay::corner_glow(progress);
+                if !glow.is_empty() {
                     self.queue.write_buffer(
                         &self.overlay_instance_buffer,
                         0,
-                        bytemuck::cast_slice(&bars),
+                        bytemuck::cast_slice(&glow),
                     );
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Capture Flash Pass"),
+                        label: Some("Capture Converge Pass"),
                         color_attachments: &[Some(Self::load_attachment(&view))],
                         depth_stencil_attachment: None,
                         timestamp_writes: None,
@@ -403,14 +401,13 @@ impl Renderer {
                         &mut pass,
                         &self.overlay_bind_group,
                         &self.overlay_instance_buffer,
-                        bars.len() as u32,
+                        glow.len() as u32,
                     );
                 }
             }
 
             CaptureOverlayParams::Preview {
                 image,
-                backdrop_alpha,
                 flash_alpha,
                 rect,
                 opacity,
@@ -418,8 +415,7 @@ impl Renderer {
                 self.capture_overlay
                     .ensure_texture(&self.device, &self.queue, image);
 
-                let mut overlay = capture_overlay::dark_backdrop(backdrop_alpha);
-                overlay.extend(capture_overlay::photo_card_border(rect, 0.012, opacity));
+                let mut overlay = capture_overlay::photo_card_border(rect, 0.014, opacity);
                 if flash_alpha > 0.001 {
                     overlay.push(ShapeInstance::rect(
                         -1.0,
@@ -655,7 +651,6 @@ impl Renderer {
             },
         }
     }
-
 
     fn load_attachment(view: &wgpu::TextureView) -> RenderPassColorAttachment<'_> {
         RenderPassColorAttachment {

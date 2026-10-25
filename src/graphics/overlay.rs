@@ -2,7 +2,7 @@ use crate::core::color::Color;
 use crate::shape::instance::ShapeInstance;
 use crate::theme::palette;
 
-pub(super) const OVERLAY_CAP: usize = 8;
+pub(super) const OVERLAY_CAP: usize = 32;
 
 const SWATCH_PX: f32 = 48.0;
 const SWATCH_BORDER_PX: f32 = 2.0;

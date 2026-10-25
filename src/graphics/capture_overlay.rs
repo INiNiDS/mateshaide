@@ -1,8 +1,9 @@
+use crate::core::Color;
 use crate::export::png::CapturedPng;
-use crate::{Color, ShapeInstance};
+use crate::shape::ShapeInstance;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct PreviewUniforms {
     rect: [f32; 4],
     opacity: f32,
@@ -11,17 +12,95 @@ struct PreviewUniforms {
 
 pub enum CaptureOverlayParams<'a> {
     None,
-    Flash {
-        progress: f32,
-    },
+    Converge { progress: f32 },
     Preview {
         image: &'a CapturedPng,
-        backdrop_alpha: f32,
         flash_alpha: f32,
         rect: [f32; 4],
         opacity: f32,
     },
 }
+
+pub fn corner_glow(progress: f32) -> Vec<ShapeInstance> {
+    let t = progress.clamp(0.0, 1.0);
+    let mut shapes = Vec::new();
+
+    let dim = 0.5 * (t * 3.0).min(1.0);
+    if dim > 0.003 {
+        shapes.push(ShapeInstance::rect(
+            -1.0, -1.0, 2.0, 2.0,
+            Color::new(0.02, 0.02, 0.12, dim),
+        ));
+    }
+
+    let corners = [
+        glam::Vec2::new(-1.3, 1.3),
+        glam::Vec2::new(1.3, 1.3),
+        glam::Vec2::new(-1.3, -1.3),
+        glam::Vec2::new(1.3, -1.3),
+    ];
+    let center = glam::Vec2::ZERO;
+
+    for corner in &corners {
+        let head = corner.lerp(center, t);
+
+        let beam_alpha = 0.35 + 0.55 * t;
+        shapes.push(ShapeInstance::line(
+            *corner,
+            head,
+            0.018 * (1.0 - 0.2 * t),
+            Color::new(0.45, 0.7, 1.0, beam_alpha),
+        ));
+
+        let r = 0.16 * (1.0 - 0.25 * t);
+        shapes.push(ShapeInstance::circle(
+            head.x, head.y, r * 2.8,
+            Color::new(0.2, 0.45, 1.0, 0.06 + 0.18 * t),
+        ));
+        shapes.push(ShapeInstance::circle(
+            head.x, head.y, r * 1.5,
+            Color::new(0.5, 0.78, 1.0, 0.25 + 0.5 * t),
+        ));
+        shapes.push(ShapeInstance::circle(
+            head.x, head.y, r * 0.55,
+            Color::new(1.0, 1.0, 1.0, 0.75 + 0.25 * t),
+        ));
+    }
+
+    shapes
+}
+
+pub fn photo_card_border(rect: [f32; 4], thickness: f32, opacity: f32) -> Vec<ShapeInstance> {
+    if opacity < 0.005 || thickness < 0.001 {
+        return Vec::new();
+    }
+    let [x0, y0, x1, y1] = rect;
+    let t = thickness;
+    let c = Color::new(0.0, 0.0, 0.0, opacity); // BLACK
+    vec![
+        ShapeInstance::rect(x0 - t, y1, (x1 - x0) + 2.0 * t, t, c),
+        ShapeInstance::rect(x0 - t, y0 - t, (x1 - x0) + 2.0 * t, t, c),
+        ShapeInstance::rect(x0 - t, y0, t, y1 - y0, c),
+        ShapeInstance::rect(x1, y0, t, y1 - y0, c),
+    ]
+}
+
+pub fn compute_preview_rect(img_w: u32, img_h: u32, screen_w: u32, screen_h: u32) -> [f32; 4] {
+    let sw = screen_w.max(1) as f32;
+    let sh = screen_h.max(1) as f32;
+    let iw = img_w.max(1) as f32;
+    let ih = img_h.max(1) as f32;
+
+    let max_w = sw * 0.82;
+    let max_h = sh * 0.82;
+    let scale = (max_w / iw).min(max_h / ih);
+
+    let ndc_w = iw * scale / sw * 2.0;
+    let ndc_h = ih * scale / sh * 2.0;
+
+    [-ndc_w * 0.5, -ndc_h * 0.5, ndc_w * 0.5, ndc_h * 0.5]
+}
+
 
 pub struct CaptureOverlay {
     pipeline: wgpu::RenderPipeline,
@@ -44,7 +123,7 @@ impl CaptureOverlay {
         });
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Capture Preview Uniform Buffer"),
+            label: Some("Capture Preview Uniform"),
             size: size_of::<PreviewUniforms>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -92,7 +171,7 @@ impl CaptureOverlay {
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Capture PreviewLayout"),
+            label: Some("Capture Preview Layout"),
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
@@ -103,16 +182,16 @@ impl CaptureOverlay {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[],
             },
-            primitive: Default::default(),
+            primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
-            multisample: Default::default(),
+            multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -142,12 +221,7 @@ impl CaptureOverlay {
         }
     }
 
-    pub fn ensure_texture(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        image: &CapturedPng,
-    ) {
+    pub fn ensure_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, image: &CapturedPng) {
         if self.bind_group.is_some() && self.cached_size == (image.width, image.height) {
             return;
         }
@@ -188,9 +262,8 @@ impl CaptureOverlay {
         );
 
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Capture Preview Bind Group"),
+            label: Some("Capture Preview BG"),
             layout: &self.bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -214,16 +287,8 @@ impl CaptureOverlay {
         self.cached_size = (image.width, image.height);
     }
 
-    pub fn render_image(
-        &self,
-        queue: &wgpu::Queue,
-        pass: &mut wgpu::RenderPass,
-        rect: [f32; 4],
-        opacity: f32,
-    ) {
-        let Some(bind_group) = &self.bind_group else {
-            return;
-        };
+    pub fn render_image(&self, queue: &wgpu::Queue, pass: &mut wgpu::RenderPass, rect: [f32; 4], opacity: f32) {
+        let Some(bind_group) = &self.bind_group else { return };
 
         let uniforms = PreviewUniforms {
             rect,
@@ -243,67 +308,4 @@ impl CaptureOverlay {
         self.bind_group = None;
         self.cached_size = (0, 0);
     }
-}
-
-pub fn flash_bars(progress: f32) -> Vec<ShapeInstance> {
-    let t = progress.clamp(0.0, 1.0);
-    if t < 0.005 {
-        return Vec::new();
-    }
-    let white = Color::WHITE;
-    let mut bars = Vec::with_capacity(4);
-    bars.push(ShapeInstance::rect(-1.0, 1.0 - t, 2.0, t, white));
-    bars.push(ShapeInstance::rect(-1.0, -1.0, 2.0, t, white));
-
-    let mid_h = 2.0 - 2.0 * t;
-    if mid_h < 0.05 {
-        bars.push(ShapeInstance::rect(-1.0, -1.0 + t, t, mid_h, white));
-        bars.push(ShapeInstance::rect(1.0 - t, -1.0 + t, t, mid_h, white));
-    }
-    bars
-}
-
-pub fn dark_backdrop(alpha: f32) -> Vec<ShapeInstance> {
-    if alpha < 0.005 {
-        return Vec::new();
-    }
-    vec![ShapeInstance::rect(
-        -1.0,
-        -1.0,
-        2.0,
-        2.0,
-        Color::new(0.05, 0.05, 0.1, alpha),
-    )]
-}
-
-pub fn photo_card_border(rect: [f32; 4], thickness: f32, opacity: f32) -> Vec<ShapeInstance> {
-    if opacity < 0.005 || thickness < 0.001 {
-        return Vec::new();
-    }
-
-    let [x0, y0, x1, y1] = rect;
-    let t = thickness;
-    let c = Color::new(1.0, 1.0, 1.0, opacity);
-    vec![
-        ShapeInstance::rect(x0 - t, y1, (x1 - x0) + 2.0 * t, t, c),
-        ShapeInstance::rect(x0 - t, y0 - t, (x1 - x0) + 2.0 * t, t, c),
-        ShapeInstance::rect(x0 - t, y0, t, y1 - y0, c),
-        ShapeInstance::rect(x1, y0, t, y1 - y0, c),
-    ]
-}
-
-pub fn compute_preview_rect(img_w: u32, img_h: u32, screen_w: u32, screen_h: u32) -> [f32; 4] {
-    let sw = screen_w.max(1) as f32;
-    let sh = screen_h.max(1) as f32;
-    let iw = img_w.max(1) as f32;
-    let ih = img_h.max(1) as f32;
-
-    let max_w = sw * 0.82;
-    let max_h = sh * 0.82;
-    let scale = (max_w / iw).min(max_h / ih);
-
-    let ndc_w = iw * scale / sw * 2.0;
-    let ndc_h = ih * scale / sh * 2.0;
-
-    [-ndc_w * 0.5, -ndc_h * 0.5, ndc_w * 0.5, ndc_h * 0.5]
 }

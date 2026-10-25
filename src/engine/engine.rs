@@ -221,7 +221,7 @@ impl Engine {
             CaptureState::Converge { started, .. } => {
                 let elapsed = (now - *started).as_secs_f32();
                 let progress = (elapsed / CONVERGE_DURATION_SECS).clamp(0.0, 1.0);
-                CaptureOverlayParams::Flash { progress }
+                CaptureOverlayParams::Converge { progress }
             }
 
             CaptureState::Preview { image, shown_at } => {
@@ -248,7 +248,6 @@ impl Engine {
 
                 CaptureOverlayParams::Preview {
                     image,
-                    backdrop_alpha: 0.65 * opacity,
                     flash_alpha,
                     rect,
                     opacity,
