@@ -68,7 +68,7 @@ fn register_camera_actions(input: &mut InputManager) {
 #[cfg(not(target_arch = "wasm32"))]
 fn register_export_actions(input: &mut InputManager) {
     input.register_action("export_png", |engine: &mut Engine| {
-        crate::export::export_to_file(engine, ExportFormat::Png);
+        engine.begin_png_capture();
     });
 
     input.register_action("export_pdf", |engine: &mut Engine| {

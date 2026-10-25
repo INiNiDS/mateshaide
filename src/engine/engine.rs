@@ -4,13 +4,20 @@ use crate::dev::{TestMode, TestSpawner};
 use crate::export::ExportError;
 use crate::export::bounds::{content_bounds, frame_camera, item_rects};
 use crate::export::pdf::{PdfBuilder, RASTER_H, RASTER_W, page_tiles};
-use crate::graphics::Renderer;
+use crate::export::png::{CaptureState, CapturedPng};
+use crate::graphics::{capture_overlay, Renderer};
 use crate::shape::{ShapeError, ShapeRegistry};
 use crate::{RendererError, export};
 use std::sync::Arc;
 use web_time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
+use crate::graphics::capture_overlay::CaptureOverlayParams;
+
+const CONVERGE_DURATION_SECS: f32 = 0.35;
+const FLASH_FADE_SECS: f32 = 0.15;
+const PREVIEW_ENTER_SECS: f32 = 0.3;
+const PREVIEW_FADE_SECS: f32 = 0.2;
 
 pub struct Engine {
     pub canvas: Canvas,
@@ -19,6 +26,7 @@ pub struct Engine {
     pub draw: DrawTool,
     renderer: Renderer,
     last_frame_time: Instant,
+    capture: CaptureState,
 }
 
 impl Engine {
@@ -36,6 +44,7 @@ impl Engine {
             renderer,
             draw: DrawTool::default(),
             last_frame_time: Instant::now(),
+            capture: CaptureState::default(),
             test_spawner: TestSpawner::default(), // Guess what
         })
     }
@@ -62,12 +71,19 @@ impl Engine {
             None
         };
 
+        let (sw, sh) = {
+            let size = self.renderer.size();
+            (size.width, size.height)
+        };
+        let capture_params = Self::capture_overlay_params(&self.capture, sw, sh);
+
         self.renderer.redraw(
             &self.canvas.camera,
             &self.canvas.instances,
             &self.canvas.texts,
             &self.shapes,
             swatch,
+            &capture_params,
         );
     }
 
@@ -75,7 +91,11 @@ impl Engine {
         let now = Instant::now();
         let dt = (now - self.last_frame_time).as_secs_f32().min(0.1);
         self.last_frame_time = now;
-        self.canvas.update(dt)
+
+        let pan_gliding = self.canvas.update(dt);
+        let capture_active = self.update_capture();
+
+        pan_gliding || capture_active
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -89,6 +109,84 @@ impl Engine {
 
     pub fn size(&self) -> PhysicalSize<u32> {
         self.renderer.size()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn begin_png_capture(&mut self) {
+        match pollster::block_on(self.capture_frame()) {
+            Ok(image) => {
+                self.capture = CaptureState::Converge {
+                    started: Instant::now(),
+                    image,
+                };
+            }
+            Err(ExportError::Empty) => {
+                tracing::warn!("nothing to capture: canvas is empty");
+            }
+            Err(e) => {
+                tracing::error!("failed to capture frame: {e}");
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn begin_png_capture(&mut self) {
+        tracing::warn!("PNG capture animation not yet supported on wasm");
+    }
+
+    async fn capture_frame(&mut self) -> Result<CapturedPng, ExportError> {
+        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+        let frame = content_bounds(&rects)
+            .ok_or(ExportError::Empty)?
+            .padded(export::PADDING);
+
+        let (w, h) = export::png::pixel_size(frame);
+        let camera = frame_camera(frame, w, h);
+
+        let rgba = self
+            .renderer
+            .export_rgba(
+                &camera,
+                &self.canvas.instances,
+                &self.canvas.texts,
+                &self.shapes,
+                w,
+                h,
+            )
+            .await?;
+
+        Ok(CapturedPng {
+            png: Vec::new(),
+            rgba,
+            width: w,
+            height: h,
+        })
+    }
+
+    pub fn is_capturing(&self) -> bool {
+        !self.capture.is_idle()
+    }
+
+    pub fn is_in_capture_preview(&self) -> bool {
+        self.capture.is_preview()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save_capture(&mut self) {
+        if let CaptureState::Preview { image, .. } = &self.capture {
+            export::save_capture_with_dialog(&image.png);
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn copy_capture(&mut self) {
+        if let CaptureState::Preview { image, .. } = &self.capture {
+            export::copy_capture_to_clipboard(&image.rgba, image.width, image.height);
+        }
+    }
+
+    pub fn dismiss_capture(&mut self) {
+        self.capture = CaptureState::Idle;
     }
 
     // Test section (will be removed later)
@@ -211,7 +309,79 @@ impl Engine {
             )
             .await?;
 
-        export::png::encode(rgba, w, h)
+        export::png::encode(&rgba, w, h)
+    }
+
+    fn update_capture(&mut self) -> bool {
+        let now = Instant::now();
+
+        let transition = match &self.capture {
+            CaptureState::Idle => return false,
+            CaptureState::Preview { shown_at, .. } => {
+                return (now - *shown_at).as_secs_f32() < PREVIEW_ENTER_SECS;
+            }
+            CaptureState::Converge { started, .. } => {
+                (now - *started).as_secs_f32() < CONVERGE_DURATION_SECS
+            }
+        };
+
+        if transition {
+            if let CaptureState::Converge { image, .. } =
+                std::mem::replace(&mut self.capture, CaptureState::Idle)
+            {
+                self.capture = CaptureState::Preview {
+                    image,
+                    shown_at: Instant::now(),
+                };
+            }
+        }
+        true
+    }
+
+    fn capture_overlay_params(
+        capture: &CaptureState,
+        screen_w: u32,
+        screen_h: u32,
+    ) -> CaptureOverlayParams<'_> {
+        let now = Instant::now();
+        match capture {
+            CaptureState::Idle => CaptureOverlayParams::None,
+            CaptureState::Converge { started, .. } => {
+                let elapsed = (now - *started).as_secs_f32();
+                let progress = (elapsed / CONVERGE_DURATION_SECS).clamp(0.0, 1.0);
+                CaptureOverlayParams::Flash { progress }
+            },
+            CaptureState::Preview { shown_at, image } => {
+                let elapsed = (now - *shown_at).as_secs_f32();
+
+                let flash_alpha = (1.0 - elapsed / FLASH_FADE_SECS).clamp(0.0, 1.0);
+                let enter = (elapsed / PREVIEW_ENTER_SECS).clamp(0.0, 1.0);
+                let opacity = (elapsed / PREVIEW_FADE_SECS).clamp(0.0, 1.0);
+
+                let base_rect = capture_overlay::compute_preview_rect(
+                    image.width,
+                    image.height,
+                    screen_w,
+                    screen_h,
+                );
+
+                let s = 0.85 + 0.15 * enter;
+                let rect = [
+                    base_rect[0] * s,
+                    base_rect[1] * s,
+                    base_rect[2] * s,
+                    base_rect[3] * s,
+                ];
+
+                CaptureOverlayParams::Preview {
+                    image,
+                    backdrop_alpha: 0.65 * opacity,
+                    flash_alpha,
+                    rect,
+                    opacity
+                }
+            }
+        }
     }
 }
 

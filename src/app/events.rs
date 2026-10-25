@@ -1,12 +1,12 @@
 use crate::{App, Engine, InputManager, InputUpdate};
 use glam::Vec2;
 use winit::event::{ElementState, MouseButton};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 
 impl App {
     pub(super) fn handle_redraw_requested(window: &Window, engine: &mut Engine) {
         #[allow(unused_mut)]
-        // mut needs to be mutable in wasm32, but when you're running on desktop it gives a warning
         let mut current = window.inner_size();
 
         #[cfg(target_arch = "wasm32")]
@@ -57,6 +57,33 @@ impl App {
         if width > 0 && height > 0 {
             engine.resize(width, height);
             window.request_redraw();
+        }
+    }
+
+    pub(super) fn handle_capture_event(
+        engine: &mut Engine,
+        event: &winit::event::WindowEvent,
+        window: &Window,
+    ) {
+        if let winit::event::WindowEvent::KeyboardInput { event, .. } = event
+            && event.state == ElementState::Pressed
+            && let PhysicalKey::Code(key) = event.physical_key
+        {
+            match key {
+                KeyCode::Escape => {
+                    engine.dismiss_capture();
+                    window.request_redraw();
+                }
+                KeyCode::KeyS if engine.is_in_capture_preview() => {
+                    engine.save_capture();
+                    window.request_redraw();
+                }
+                KeyCode::KeyC if engine.is_in_capture_preview() => {
+                    engine.copy_capture();
+                    window.request_redraw();
+                }
+                _ => {}
+            }
         }
     }
 

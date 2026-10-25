@@ -1,6 +1,7 @@
 use crate::canvas::camera::{Camera, CameraUniform};
 use crate::canvas::text::CanvasText;
 use crate::core::color::Color;
+use crate::graphics::capture_overlay::{self, CaptureOverlay, CaptureOverlayParams};
 use crate::graphics::overlay::{OVERLAY_CAP, build_swatch_instances};
 use crate::graphics::pipeline::RenderPipeline;
 use crate::graphics::text_renderer::TextLayer;
@@ -32,6 +33,8 @@ pub struct Renderer {
     // Test (will remove)
     overlay_bind_group: wgpu::BindGroup,
     overlay_instance_buffer: wgpu::Buffer,
+
+    capture_overlay: CaptureOverlay,
 }
 
 impl Renderer {
@@ -154,7 +157,7 @@ impl Renderer {
             &shapes.build_wgsl(),
         );
 
-        let indetity_uniform = {
+        let identity_uniform = {
             let m = glam::Mat4::IDENTITY;
             CameraUniform {
                 view_proj: m,
@@ -164,7 +167,7 @@ impl Renderer {
         };
         let overlay_camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Overlay Camera Buffer"),
-            contents: bytemuck::cast_slice(&[indetity_uniform]),
+            contents: bytemuck::cast_slice(&[identity_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
         let overlay_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -183,6 +186,7 @@ impl Renderer {
         });
 
         let text = TextLayer::new(&device, &queue, config.format);
+        let capture_overlay = CaptureOverlay::new(&device, config.format);
 
         Ok(Self {
             instance,
@@ -202,6 +206,7 @@ impl Renderer {
             overlay_bind_group,
             overlay_instance_buffer,
             text,
+            capture_overlay,
         })
     }
 
@@ -265,6 +270,7 @@ impl Renderer {
         texts: &[CanvasText],
         shapes: &ShapeRegistry,
         swatch: Option<Color>,
+        capture: &CaptureOverlayParams<'_>,
     ) {
         self.update_pipeline(shapes);
         let uniform = camera.uniform();
@@ -376,6 +382,89 @@ impl Renderer {
                 &self.overlay_instance_buffer,
                 overlay.len() as u32,
             );
+        }
+
+        match capture {
+            CaptureOverlayParams::None => {
+                self.capture_overlay.clear();
+            }
+
+            CaptureOverlayParams::Flash { progress } => {
+                let bars = capture_overlay::flash_bars(*progress);
+                if !bars.is_empty() {
+                    self.queue.write_buffer(
+                        &self.overlay_instance_buffer,
+                        0,
+                        bytemuck::cast_slice(&bars),
+                    );
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Capture Flash Pass"),
+                        color_attachments: &[Some(Self::load_attachment(&view))],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    self.render_pipeline.draw(
+                        &mut pass,
+                        &self.overlay_bind_group,
+                        &self.overlay_instance_buffer,
+                        bars.len() as u32,
+                    );
+                }
+            }
+
+            CaptureOverlayParams::Preview {
+                image,
+                backdrop_alpha,
+                flash_alpha,
+                rect,
+                opacity,
+            } => {
+                self.capture_overlay
+                    .ensure_texture(&self.device, &self.queue, image);
+
+                let mut overlay = capture_overlay::dark_backdrop(*backdrop_alpha);
+                overlay.extend(capture_overlay::photo_card_border(*rect, 0.012, *opacity));
+                if flash_alpha > &0.001 {
+                    overlay.push(ShapeInstance::rect(
+                        -1.0,
+                        -1.0,
+                        2.0,
+                        2.0,
+                        Color::new(1.0, 1.0, 1.0, *flash_alpha),
+                    ));
+                }
+
+                if !overlay.is_empty() {
+                    self.queue.write_buffer(
+                        &self.overlay_instance_buffer,
+                        0,
+                        bytemuck::cast_slice(&overlay),
+                    );
+                }
+
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Capture Preview Pass"),
+                    color_attachments: &[Some(Self::load_attachment(&view))],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+
+                if !overlay.is_empty() {
+                    self.render_pipeline.draw(
+                        &mut pass,
+                        &self.overlay_bind_group,
+                        &self.overlay_instance_buffer,
+                        overlay.len() as u32,
+                    );
+                }
+
+                self.capture_overlay
+                    .render_image(&self.queue, &mut pass, *rect, *opacity);
+            }
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -554,7 +643,7 @@ impl Renderer {
         }
     }
 
-    const fn color_attachments(view: &wgpu::TextureView) -> RenderPassColorAttachment {
+    const fn color_attachments(view: &wgpu::TextureView) -> RenderPassColorAttachment<'_> {
         RenderPassColorAttachment {
             view: &view,
             depth_slice: None,
@@ -566,6 +655,18 @@ impl Renderer {
                     b: 0.955,
                     a: 1.0,
                 }),
+                store: wgpu::StoreOp::Store,
+            },
+        }
+    }
+
+    fn load_attachment(view: &wgpu::TextureView) -> RenderPassColorAttachment<'_> {
+        RenderPassColorAttachment {
+            view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Load,
                 store: wgpu::StoreOp::Store,
             },
         }

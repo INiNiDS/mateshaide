@@ -51,3 +51,53 @@ pub fn export_to_file(engine: &mut Engine, format: ExportFormat) {
         Err(e) => error!("export {ext} failed: {e}"),
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_capture_with_dialog(png: &[u8]) -> bool {
+    let path = rfd::FileDialog::new()
+        .add_filter("PNG Image", &["png"])
+        .set_file_name("mateshaide-capture.png")
+        .save_file();
+
+    if let Some(path) = path {
+        match std::fs::write(&path, png) {
+            Ok(()) => {
+                info!("saved capture to {}", path.display());
+                true
+            }
+            Err(e) => {
+                error!("failed to save capture: {e}");
+                false
+            }
+        }
+    } else {
+        false
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn copy_capture_to_clipboard(rgba: &[u8], width: u32, height: u32) -> bool {
+    match arboard::Clipboard::new() {
+        Ok(mut clipboard) => {
+            let img = arboard::ImageData {
+                width: width as usize,
+                height: height as usize,
+                bytes: std::borrow::Cow::Borrowed(rgba),
+            };
+            match clipboard.set_image(img) {
+                Ok(()) => {
+                    info!("copied capture to clipboard");
+                    true
+                }
+                Err(e) => {
+                    error!("failed to copy to clipboard: {e}");
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            error!("failed to open clipboard: {e}");
+            false
+        }
+    }
+}

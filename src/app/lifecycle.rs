@@ -82,6 +82,11 @@ impl ApplicationHandler for App {
             _ => {}
         }
 
+        if engine.is_capturing() {
+            Self::handle_capture_event(engine, &event, &window);
+            return;
+        }
+
         let update = self.input.process_event(&event, engine);
 
         Self::handle_input_update(&self.input, engine, update, &window);
