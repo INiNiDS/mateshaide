@@ -400,15 +400,15 @@ impl Renderer {
             CaptureOverlayParams::Preview {
                 image,
                 flash_alpha,
-                rect,
-                opacity,
+                layout,
+                anim,
                 buttons,
+                buttons_opacity,
             } => {
                 self.capture_overlay
                     .ensure_texture(&self.device, &self.queue, image);
 
-                let mut shapes = capture_overlay::photo_card_border(rect, 0.012, opacity);
-                shapes.extend(capture_overlay::button_shapes(&buttons, opacity));
+                let mut shapes = capture_overlay::button_shapes(&buttons, buttons_opacity);
                 if flash_alpha > 0.001 {
                     shapes.push(ShapeInstance::rect(
                         -1.0,
@@ -418,6 +418,7 @@ impl Renderer {
                         Color::new(1.0, 1.0, 1.0, flash_alpha),
                     ));
                 }
+
                 if !shapes.is_empty() {
                     self.queue.write_buffer(
                         &self.overlay_instance_buffer,
@@ -425,7 +426,6 @@ impl Renderer {
                         bytemuck::cast_slice(&shapes),
                     );
                 }
-
                 if !overlay_texts.is_empty() {
                     self.overlay_text
                         .prepare(&self.device, &self.queue, camera, overlay_texts);
@@ -440,16 +440,21 @@ impl Renderer {
                     multiview_mask: None,
                 });
 
+                self.capture_overlay.render_image(
+                    &self.queue,
+                    &mut pass,
+                    (self.size.width, self.size.height),
+                    &layout,
+                    &anim,
+                );
                 if !shapes.is_empty() {
                     self.render_pipeline.draw(
                         &mut pass,
                         &self.overlay_bind_group,
                         &self.overlay_instance_buffer,
                         shapes.len() as u32,
-                    );
+                    )
                 }
-                self.capture_overlay
-                    .render_image(&self.queue, &mut pass, rect, opacity);
                 if !overlay_texts.is_empty() {
                     self.overlay_text.render(&mut pass);
                 }

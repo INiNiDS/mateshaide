@@ -4,7 +4,9 @@ use crate::dev::{TestMode, TestSpawner};
 use crate::export::bounds::{Rect, content_bounds, frame_camera, item_rects};
 use crate::export::pdf::{PdfBuilder, RASTER_H, RASTER_W, page_tiles};
 use crate::export::png::{CaptureState, CapturedPng};
-use crate::graphics::capture_overlay::{self, ButtonAction, ButtonRect, CaptureOverlayParams};
+use crate::graphics::capture_overlay::{
+    self, ButtonAction, ButtonRect, CaptureOverlayParams, CardAnim, CardLayout, REST_ANGLE,
+};
 use crate::graphics::{PendingReadback, Renderer, RendererError};
 use crate::shape::{ShapeError, ShapeRegistry};
 use crate::{CanvasText, Color, export};
@@ -17,8 +19,12 @@ use winit::window::Window;
 
 const CONVERGE_SECS: f32 = 0.45;
 const FLASH_FADE_SECS: f32 = 0.18;
-const PREVIEW_ENTER_SECS: f32 = 0.35;
-const PREVIEW_FADE_SECS: f32 = 0.25;
+const PREVIEW_ANIM_SECS: f32 = 3.0;
+const DROP_SECS: f32 = 0.75;
+const DEVELOP_DELAY: f32 = 0.35;
+const DEVELOP_SECS: f32 = 2.4;
+const BUTTONS_DELAY: f32 = 0.7;
+const BUTTONS_FADE: f32 = 0.25;
 
 struct PdfJob {
     tiles: VecDeque<Rect>,
@@ -88,9 +94,13 @@ impl Engine {
             (s.width, s.height)
         };
 
-        let buttons =
-            capture_overlay::compute_button_rects(self.capture_photo_rect(sw, sh), sw, sh);
-        let overlay_texts = self.build_button_texts(&buttons);
+        let overlay_texts = match self.capture_layout(sw, sh) {
+            Some(l) => {
+                let b = capture_overlay::compute_button_rects(&l, sw, sh);
+                self.build_button_texts(&b, self.button_opacity())
+            }
+            None => Vec::new(),
+        };
         let capture_params = Self::capture_params(&self.capture, sw, sh);
 
         self.renderer.redraw(
@@ -217,7 +227,7 @@ impl Engine {
         self.capture = CaptureState::Idle;
     }
 
-    pub fn check_button_click(&self, cursor: Vec2) -> Option<ButtonAction> {
+    pub fn check_button_click(&mut self, cursor: Vec2) -> Option<ButtonAction> {
         if !self.capture.is_preview() {
             return None;
         }
@@ -225,8 +235,8 @@ impl Engine {
             let s = self.renderer.size();
             (s.width, s.height)
         };
-        let photo_rect = self.capture_photo_rect(sw, sh);
-        let buttons = capture_overlay::compute_button_rects(photo_rect, sw, sh);
+        let layout = self.capture_layout(sw, sh)?;
+        let buttons = capture_overlay::compute_button_rects(&layout, sw, sh);
 
         for (i, btn) in buttons.iter().enumerate() {
             let [l, t, r, b] = btn.screen;
@@ -246,7 +256,7 @@ impl Engine {
         let transition = match &self.capture {
             CaptureState::Idle => return false,
             CaptureState::Preview { shown_at, .. } => {
-                return (now - *shown_at).as_secs_f32() < PREVIEW_ENTER_SECS;
+                return (now - *shown_at).as_secs_f32() < PREVIEW_ANIM_SECS;
             }
             CaptureState::Converge { started, .. } => {
                 (now - *started).as_secs_f32() >= CONVERGE_SECS
@@ -265,15 +275,45 @@ impl Engine {
         true
     }
 
-    fn capture_photo_rect(&self, sw: u32, sh: u32) -> [f32; 4] {
+    fn capture_layout(&mut self, sw: u32, sh: u32) -> Option<CardLayout> {
         match &self.capture {
-            CaptureState::Preview { image, .. } => {
-                capture_overlay::compute_preview_rect(image.width, image.height, sw, sh)
+            CaptureState::Preview { image, .. } | CaptureState::Converge { image, .. } => Some(
+                capture_overlay::compute_card_layout(image.width, image.height, sw, sh),
+            ),
+            CaptureState::Idle => None,
+        }
+    }
+
+    fn buttons_opacity_at(t: f32) -> f32 {
+        ((t - BUTTONS_DELAY) / BUTTONS_FADE).clamp(0.0, 1.0)
+    }
+
+    fn button_opacity(&self) -> f32 {
+        match &self.capture {
+            CaptureState::Preview { shown_at, .. } => {
+                Self::buttons_opacity_at((Instant::now() - *shown_at).as_secs_f32())
             }
-            CaptureState::Converge { image, .. } => {
-                capture_overlay::compute_preview_rect(image.width, image.height, sw, sh)
-            }
-            CaptureState::Idle => [0.0; 4],
+            _ => 0.0,
+        }
+    }
+
+    fn card_anim(t: f32, l: &CardLayout, sh: f32) -> CardAnim {
+        let x = (t / DROP_SECS).clamp(0.0, 1.0);
+        let c1 = 1.70158;
+        let c3 = c1 + 1.0;
+        let u = x - 1.0;
+
+        let p = 1.0 + c3 * u.powi(3) + c1 * u.powi(2);
+        let start = sh * 0.5 + l.card.y * 0.5 + 40.0;
+
+        CardAnim {
+            offset: Vec2::new(0.0, -(1.0 - p) * start),
+            angle: REST_ANGLE + (0.10 - REST_ANGLE) * (1.0 - p),
+            scale: 0.92 + 0.08 * p.min(1.0),
+            opacity: (t / 0.06).clamp(0.0, 1.0),
+            develop: ((t - DEVELOP_DELAY) / DEVELOP_SECS).clamp(0.0, 1.0),
+            shadow: p.clamp(0.0, 1.0),
+            dim: (t / 0.35).clamp(0.0, 1.0) * 0.5,
         }
     }
 
@@ -286,41 +326,45 @@ impl Engine {
                 let progress = (elapsed / CONVERGE_SECS).clamp(0.0, 1.0);
                 CaptureOverlayParams::Converge { progress }
             }
-            CaptureState::Preview { image, shown_at } => {
+            CaptureState::Preview { shown_at, image } => {
                 let elapsed = (now - *shown_at).as_secs_f32();
                 let flash = (1.0 - elapsed / FLASH_FADE_SECS).clamp(0.0, 1.0);
-                let enter = (elapsed / PREVIEW_ENTER_SECS).clamp(0.0, 1.0);
-                let opacity = (elapsed / PREVIEW_FADE_SECS).clamp(0.0, 1.0);
-                let base = capture_overlay::compute_preview_rect(image.width, image.height, sw, sh);
-                let s = 0.88 + 0.12 * enter;
-                let rect = [base[0] * s, base[1] * s, base[2] * s, base[3] * s];
-                let buttons = capture_overlay::compute_button_rects(base, sw, sh);
+                let layout =
+                    capture_overlay::compute_card_layout(image.width, image.height, sw, sh);
+
                 CaptureOverlayParams::Preview {
                     image,
                     flash_alpha: flash,
-                    rect,
-                    opacity,
-                    buttons,
+                    anim: Self::card_anim(elapsed, &layout, sh as f32),
+                    buttons: Box::from(capture_overlay::compute_button_rects(&layout, sw, sh)),
+                    buttons_opacity: Self::buttons_opacity_at(elapsed),
+                    layout,
                 }
             }
         }
     }
 
-    fn build_button_texts(&self, buttons: &[ButtonRect; 2]) -> Vec<CanvasText> {
-        let camera = &self.canvas.camera;
+    // TODO: Remove "Magic Numbers"
+    fn build_button_texts(&self, buttons: &[ButtonRect; 2], opacity: f32) -> Vec<CanvasText> {
+        if opacity < 0.01 {
+            return Vec::new();
+        }
         buttons
             .iter()
             .map(|btn| {
                 let cx = (btn.screen[0] + btn.screen[2]) * 0.5;
                 let cy = (btn.screen[1] + btn.screen[3]) * 0.5;
-                let sz = 15.0 / camera.zoom;
+                let sz = 15.0 / self.canvas.camera.zoom;
                 let est_w = btn.label.len() as f32 * sz * 0.32;
-                let world = camera.screen_to_world(Vec2::new(cx - est_w, cy - sz * 0.55));
+                let world = self
+                    .canvas
+                    .camera
+                    .screen_to_world(Vec2::new(cx - est_w, cy - sz * 0.55));
                 CanvasText {
                     position: world,
-                    text: btn.label.to_owned(),
+                    text: btn.label.to_string(),
                     size: sz,
-                    color: Color::WHITE,
+                    color: Color::WHITE.with_alpha(opacity),
                 }
             })
             .collect()

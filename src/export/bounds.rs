@@ -53,8 +53,16 @@ fn shape_rect(shape: &ShapeInstance) -> Rect {
 }
 
 fn text_rect(text: &CanvasText) -> Rect {
-    let width = text.text.chars().count() as f32 * text.size * 0.6;
-    let height = text.size * 1.25;
+    let mut max_columns = 0usize;
+    let mut line_count = 0usize;
+
+    for line in text.text.split('\n') {
+        max_columns = max_columns.max(line.chars().count());
+        line_count += 1;
+    }
+
+    let width = max_columns as f32 * text.size * 0.6;
+    let height = line_count as f32 * text.size * 1.25;
 
     Rect {
         min: Vec2::new(text.position.x, text.position.y - height),

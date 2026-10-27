@@ -1,11 +1,17 @@
 use crate::core::Color;
 use crate::export::png::CapturedPng;
 use crate::shape::ShapeInstance;
+use glam::Vec2;
 
+pub const REST_ANGLE: f32 = -0.035;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct GlowU { progress: f32, intensity: f32, _pad: [f32; 2] }
+struct GlowU {
+    progress: f32,
+    intensity: f32,
+    _pad: [f32; 2],
+}
 
 pub struct GlowOverlay {
     pipeline: wgpu::RenderPipeline,
@@ -77,13 +83,29 @@ impl GlowOverlay {
             multiview_mask: None,
             cache: None,
         });
-        Self { pipeline, uniform_buf, bind_group }
+        Self {
+            pipeline,
+            uniform_buf,
+            bind_group,
+        }
     }
 
-    pub fn render(&self, queue: &wgpu::Queue, pass: &mut wgpu::RenderPass, progress: f32, intensity: f32) {
-        queue.write_buffer(&self.uniform_buf, 0, bytemuck::cast_slice(&[GlowU {
-            progress, intensity, _pad: [0.0; 2],
-        }]));
+    pub fn render(
+        &self,
+        queue: &wgpu::Queue,
+        pass: &mut wgpu::RenderPass,
+        progress: f32,
+        intensity: f32,
+    ) {
+        queue.write_buffer(
+            &self.uniform_buf,
+            0,
+            bytemuck::cast_slice(&[GlowU {
+                progress,
+                intensity,
+                _pad: [0.0; 2],
+            }]),
+        );
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.draw(0..3, 0..1);
@@ -92,7 +114,14 @@ impl GlowOverlay {
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct PreviewU { rect: [f32; 4], opacity: f32, _pad: [f32; 3] }
+struct PreviewU {
+    screen: [f32; 2],
+    center: [f32; 2],
+    card: [f32; 2],
+    photo: [f32; 2],
+    frame: [f32; 4],
+    anim: [f32; 4],
+}
 
 pub struct CaptureOverlay {
     pipeline: wgpu::RenderPipeline,
@@ -194,12 +223,24 @@ impl CaptureOverlay {
             wgpu::TextureFormat::Rgba8Unorm
         };
         Self {
-            pipeline, bgl, sampler, uniform_buf, tex_format,
-            texture: None, _view: None, bind_group: None, cached: (0, 0),
+            pipeline,
+            bgl,
+            sampler,
+            uniform_buf,
+            tex_format,
+            texture: None,
+            _view: None,
+            bind_group: None,
+            cached: (0, 0),
         }
     }
 
-    pub fn ensure_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, image: &CapturedPng) {
+    pub fn ensure_texture(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        image: &CapturedPng,
+    ) {
         if self.bind_group.is_some() && self.cached == (image.width, image.height) {
             return;
         }
@@ -241,9 +282,18 @@ impl CaptureOverlay {
             label: Some("Preview BG"),
             layout: &self.bgl,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.uniform_buf.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
             ],
         });
         self.texture = Some(texture);
@@ -252,14 +302,33 @@ impl CaptureOverlay {
         self.cached = (image.width, image.height);
     }
 
-    pub fn render_image(&self, queue: &wgpu::Queue, pass: &mut wgpu::RenderPass, rect: [f32; 4], opacity: f32) {
-        let Some(bg) = &self.bind_group else { return };
-        queue.write_buffer(&self.uniform_buf, 0, bytemuck::cast_slice(&[PreviewU {
-            rect, opacity, _pad: [0.0; 3],
-        }]));
+    pub fn render_image(
+        &self,
+        queue: &wgpu::Queue,
+        pass: &mut wgpu::RenderPass,
+        screen: (u32, u32),
+        l: &CardLayout,
+        a: &CardAnim,
+    ) {
+        let Some(bg) = &self.bind_group else {
+            return;
+        };
+        let center = l.center + a.offset;
+        queue.write_buffer(
+            &self.uniform_buf,
+            0,
+            bytemuck::bytes_of(&PreviewU {
+                screen: [screen.0 as f32, screen.1 as f32],
+                center: center.to_array(),
+                card: l.card.to_array(),
+                photo: l.photo.to_array(),
+                frame: [l.side, l.bottom, a.angle, a.scale],
+                anim: [a.opacity, a.develop, a.shadow, a.dim],
+            }),
+        );
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, bg, &[]);
-        pass.draw(0..6, 0..1);
+        pass.draw(0..3, 0..1);
     }
 
     pub fn clear(&mut self) {
@@ -278,68 +347,20 @@ pub struct ButtonRect {
     pub color: Color,
 }
 
-pub enum ButtonAction { Save, Copy }
-
-#[must_use]
-pub fn compute_button_rects(photo_rect: [f32; 4], sw: u32, sh: u32) -> [ButtonRect; 2] {
-    let sw = sw.max(1) as f32;
-    let sh = sh.max(1) as f32;
-
-    let photo_bottom = (1.0 - photo_rect[1]) * 0.5 * sh;
-
-    let bw: f32 = 160.0;
-    let bh: f32 = 46.0;
-    let gap: f32 = 14.0;
-    let margin: f32 = 22.0;
-
-    let top = photo_bottom + margin;
-    let bottom = top + bh;
-    let cx = sw * 0.5;
-
-    let s_l = cx - bw - gap * 0.5;
-    let s_r = cx - gap * 0.5;
-    let c_l = cx + gap * 0.5;
-    let c_r = cx + bw + gap * 0.5;
-
-    let nx = |x: f32| x / sw * 2.0 - 1.0;
-    let ny = |y: f32| 1.0 - y / sh * 2.0;
-
-    [
-        ButtonRect {
-            ndc: [nx(s_l), ny(bottom), nx(s_r), ny(top)],
-            screen: [s_l, top, s_r, bottom],
-            label: "Save",
-            color: Color::new(0.12, 0.42, 0.92, 1.0),
-        },
-        ButtonRect {
-            ndc: [nx(c_l), ny(bottom), nx(c_r), ny(top)],
-            screen: [c_l, top, c_r, bottom],
-            label: "Copy",
-            color: Color::new(0.08, 0.62, 0.32, 1.0),
-        },
-    ]
+pub enum ButtonAction {
+    Save,
+    Copy,
 }
 
 #[must_use]
 pub fn button_shapes(buttons: &[ButtonRect; 2], opacity: f32) -> Vec<ShapeInstance> {
-    buttons.iter().map(|b| {
-        let [x0, y0, x1, y1] = b.ndc;
-        ShapeInstance::rect(x0, y0, x1 - x0, y1 - y0, b.color.with_alpha(opacity))
-    }).collect()
-}
-
-
-#[must_use]
-pub fn photo_card_border(rect: [f32; 4], t: f32, opacity: f32) -> Vec<ShapeInstance> {
-    if opacity < 0.005 || t < 0.001 { return Vec::new(); }
-    let [x0, y0, x1, y1] = rect;
-    let c = Color::new(0.0, 0.0, 0.0, opacity);
-    vec![
-        ShapeInstance::rect(x0 - t, y1, (x1 - x0) + 2.0 * t, t, c),
-        ShapeInstance::rect(x0 - t, y0 - t, (x1 - x0) + 2.0 * t, t, c),
-        ShapeInstance::rect(x0 - t, y0, t, y1 - y0, c),
-        ShapeInstance::rect(x1, y0, t, y1 - y0, c),
-    ]
+    buttons
+        .iter()
+        .map(|b| {
+            let [x0, y0, x1, y1] = b.ndc;
+            ShapeInstance::rect(x0, y0, x1 - x0, y1 - y0, b.color.with_alpha(opacity))
+        })
+        .collect()
 }
 
 #[must_use]
@@ -356,12 +377,92 @@ pub fn compute_preview_rect(img_w: u32, img_h: u32, sw: u32, sh: u32) -> [f32; 4
 
 pub enum CaptureOverlayParams<'a> {
     None,
-    Converge { progress: f32 },
+    Converge {
+        progress: f32,
+    },
     Preview {
         image: &'a CapturedPng,
         flash_alpha: f32,
-        rect: [f32; 4],
-        opacity: f32,
-        buttons: [ButtonRect; 2],
+        layout: CardLayout,
+        anim: CardAnim,
+        buttons: Box<[ButtonRect; 2]>,
+        buttons_opacity: f32,
     },
+}
+
+#[derive(Clone, Copy)]
+pub struct CardLayout {
+    pub center: Vec2,
+    pub card: Vec2,
+    pub photo: Vec2,
+    pub side: f32,
+    pub bottom: f32,
+}
+
+#[derive(Clone, Copy)]
+pub struct CardAnim {
+    pub offset: Vec2,
+    pub angle: f32,
+    pub scale: f32,
+    pub opacity: f32,
+    pub develop: f32,
+    pub shadow: f32,
+    pub dim: f32,
+}
+
+#[must_use]
+pub fn compute_card_layout(img_w: u32, img_h: u32, sw: u32, sh: u32) -> CardLayout {
+    let sw = sw.max(1) as f32;
+    let sh = sh.max(1) as f32;
+    let iw = img_w.max(1) as f32;
+    let ih = img_h.max(1) as f32;
+    let r = iw.max(ih);
+    let (side_k, bottom_k) = (0.05 * r, 0.17 * r);
+
+    let s = (sw * 0.70 / (iw + 2.0 * side_k)).min(sh * 0.60 / (ih + side_k + bottom_k));
+    let photo = Vec2::new(iw, ih) * s;
+    let (side, bottom) = (side_k * s, bottom_k * s);
+
+    CardLayout {
+        center: Vec2::new(sw * 0.5, sh * 0.46),
+        card: Vec2::new(photo.x + 2.0 * side, photo.y + side + bottom),
+        photo,
+        side,
+        bottom,
+    }
+}
+
+#[must_use]
+pub fn compute_button_rects(l: &CardLayout, sw: u32, sh: u32) -> [ButtonRect; 2] {
+    let sw = sw.max(1) as f32;
+    let sh = sh.max(1) as f32;
+
+    let card_bottom = l.center.y + l.card.y * 0.5 + l.card.x * 0.5 * REST_ANGLE.abs().sin();
+
+    let (bw, bh, gap, margin) = (160.0_f32, 46.0_f32, 14.0_f32, 22.0_f32);
+    let top = card_bottom + margin;
+    let bottom = top + bh;
+    let cx = sw * 0.5;
+
+    let s_l = cx - bw - gap * 0.5;
+    let s_r = cx - gap * 0.5;
+    let c_l = cx + gap * 0.5;
+    let c_r = cx + bw + gap * 0.5;
+
+    let nx = |x: f32| x / sw * 2.0 - 1.0;
+    let ny = |y: f32| 1.0 - y / sh * 2.0;
+    [
+        ButtonRect {
+            ndc: [nx(s_l), ny(bottom), nx(s_r), ny(top)],
+            screen: [s_l, top, s_r, bottom],
+            label: "Save",
+            color: Color::new(0.12, 0.42, 0.92, 1.0),
+        },
+        ButtonRect {
+            ndc: [nx(c_l), ny(bottom), nx(c_r), ny(top)],
+            screen: [c_l, top, c_r, bottom],
+            label: "Copy",
+            color: Color::new(0.08, 0.62, 0.32, 1.0),
+        },
+    ]
 }
