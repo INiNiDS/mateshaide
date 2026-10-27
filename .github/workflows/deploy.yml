@@ -35,12 +35,17 @@ jobs:
           wasm-pack build --release --target web \
             --out-dir pkg --out-name matesha_ide
 
-      - name: Add static assets
-        run: cp index.html pkg/index.html
+      - name: Prepare site
+        run: |
+          mkdir -p dist/pkg
+          cp index.html dist/index.html
+          cp pkg/matesha_ide.js dist/pkg/
+          cp pkg/matesha_ide_bg.wasm dist/pkg/
+          touch dist/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: pkg
+          path: dist
 
   deploy:
     needs: build

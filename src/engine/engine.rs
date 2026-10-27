@@ -13,7 +13,7 @@ use crate::{CanvasText, Color, export};
 use glam::Vec2;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use web_time::{Instant, SystemTime, UNIX_EPOCH};
+use web_time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
@@ -438,8 +438,8 @@ impl Engine {
 
         match job.builder.finish() {
             Ok(bytes) => {
-                let stamp = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
+                let stamp = web_time::SystemTime::now()
+                    .duration_since(web_time::UNIX_EPOCH)
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
                 export::save::save_bytes(

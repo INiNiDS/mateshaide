@@ -219,7 +219,7 @@
         }
 
         try {
-            const {default: init} = await import("./matesha_ide.js");
+            const {default: init} = await import("./pkg/matesha_ide.js");
             await init();
         } catch (e) {
             window.showFallback("wasm init failed: " + e);
