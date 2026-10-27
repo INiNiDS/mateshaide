@@ -140,6 +140,51 @@ impl<Ctx> InputManager<Ctx> {
         }
     }
 
+    // TODO: Try to DRY
+    /// Made for export, Updates state by doesn't run `try_trigger()`
+    pub fn process_event_without_actions(&mut self, event: &WindowEvent) -> InputUpdate {
+        match event {
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+                InputUpdate::None
+            },
+            WindowEvent::Focused(false) => {
+                self.key_down.clear();
+                self.mouse_buttons_down.clear();
+                self.modifiers = ModifiersState::default();
+                InputUpdate::FocusLost
+            },
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let PhysicalKey::Code(key) = event.physical_key {
+                    match event.state {
+                        ElementState::Pressed => {
+                            self.key_down.insert(key);
+                        }
+                        ElementState::Released => {
+                            self.key_down.remove(&key);
+                        }
+                    }
+                }
+                InputUpdate::None
+            },
+            WindowEvent::MouseInput { state, button, .. } => {
+                match state {
+                    ElementState::Pressed => {
+                        self.mouse_buttons_down.insert(*button);
+                    }
+                    ElementState::Released => {
+                        self.mouse_buttons_down.remove(button);
+                    }
+                }
+                InputUpdate::None
+            },
+            WindowEvent::CursorMoved { position, .. } => {
+                self.handle_cursor_moved(*position)
+            }
+            _ => InputUpdate::None,
+        }
+    }
+
     fn handle_keyboard(&mut self, event: &KeyEvent, ctx: &mut Ctx) -> InputUpdate {
         let PhysicalKey::Code(key) = event.physical_key else {
             return InputUpdate::None;

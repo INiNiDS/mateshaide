@@ -1,4 +1,5 @@
 use super::{App, demo};
+use crate::InputUpdate;
 use crate::engine::Engine;
 use glam::Vec2;
 use std::rc::Rc;
@@ -88,9 +89,15 @@ impl ApplicationHandler for App {
         }
 
         if engine.is_capturing() {
+            let update = self.input.process_event_without_actions(&event);
+            if matches!(update, InputUpdate::FocusLost) {
+                Self::handle_input_update(&self.input, engine, update, &window);
+            }
+
             if let WindowEvent::CursorMoved { position, .. } = &event {
                 engine.capture_cursor = Vec2::new(position.x as f32, position.y as f32);
             }
+
             Self::handle_capture_event(engine, &event, &window);
             return;
         }
