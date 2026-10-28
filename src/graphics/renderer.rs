@@ -2,7 +2,9 @@ use crate::canvas::camera::{Camera, CameraUniform};
 use crate::canvas::text::CanvasText;
 use crate::core::color::Color;
 use crate::graphics::capture_overlay::{self, CaptureOverlay, CaptureOverlayParams, GlowOverlay};
-use crate::graphics::overlay::{OVERLAY_CAP, build_swatch_instances};
+use crate::graphics::overlay::OVERLAY_CAP;
+#[cfg(debug_assertions)]
+use crate::graphics::overlay::build_swatch_instances;
 use crate::graphics::pipeline::RenderPipeline;
 use crate::graphics::text_renderer::TextLayer;
 use crate::shape::instance::ShapeInstance;
@@ -42,6 +44,8 @@ pub struct Renderer {
     overlay_text: TextLayer,
     overlay_bind_group: wgpu::BindGroup,
     overlay_instance_buffer: wgpu::Buffer,
+    #[cfg(debug_assertions)]
+    dev_instance_buffer: wgpu::Buffer,
     glow: GlowOverlay,
     capture_overlay: CaptureOverlay,
 }
@@ -194,6 +198,15 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
+        #[cfg(debug_assertions)]
+        let dev_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Dev Editor Instances"),
+            size: (crate::dev::overlay::INSTANCES_CAP * size_of::<ShapeInstance>())
+                as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let text = TextLayer::new(&device, &queue, config.format);
         let overlay_text = TextLayer::new(&device, &queue, config.format);
         let glow = GlowOverlay::new(&device, config.format);
@@ -218,6 +231,8 @@ impl Renderer {
             overlay_text,
             overlay_bind_group,
             overlay_instance_buffer,
+            #[cfg(debug_assertions)]
+            dev_instance_buffer,
             glow,
             capture_overlay,
         })
@@ -278,9 +293,10 @@ impl Renderer {
         instances: &[ShapeInstance],
         texts: &[CanvasText],
         shapes: &ShapeRegistry,
-        swatch: Option<Color>,
+        #[cfg(debug_assertions)] swatch: Option<Color>,
         capture: CaptureOverlayParams<'_>,
         overlay_texts: &[CanvasText],
+        #[cfg(debug_assertions)] dev_overlay: &[ShapeInstance],
     ) {
         self.update_pipeline(shapes);
         self.queue.write_buffer(
@@ -304,6 +320,9 @@ impl Renderer {
         }
 
         self.text.prepare(&self.device, &self.queue, camera, texts);
+        if !overlay_texts.is_empty() {
+            self.overlay_text.prepare(&self.device, &self.queue, camera, overlay_texts);
+        }
 
         let output = match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(t) => t,
@@ -355,6 +374,27 @@ impl Renderer {
             self.text.render(&mut pass);
         }
 
+        #[cfg(debug_assertions)]
+        if !dev_overlay.is_empty() {
+            debug_assert!(dev_overlay.len() <= crate::dev::overlay::INSTANCES_CAP);
+            self.queue.write_buffer(
+                &self.dev_instance_buffer, 0, bytemuck::cast_slice(dev_overlay),
+            );
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Dev Editor"),
+                color_attachments: &[Some(Self::load(&view))],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.render_pipeline.draw(
+                &mut pass, &self.camera_bind_group, &self.dev_instance_buffer,
+                dev_overlay.len() as u32,
+            );
+        }
+
+        #[cfg(debug_assertions)]
         if let Some(color) = swatch {
             let overlay = build_swatch_instances(color, self.size.width, self.size.height);
             self.queue.write_buffer(
@@ -426,11 +466,6 @@ impl Renderer {
                         bytemuck::cast_slice(&shapes),
                     );
                 }
-                if !overlay_texts.is_empty() {
-                    self.overlay_text
-                        .prepare(&self.device, &self.queue, camera, overlay_texts);
-                }
-
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Preview"),
                     color_attachments: &[Some(Self::load(&view))],
@@ -455,10 +490,19 @@ impl Renderer {
                         shapes.len() as u32,
                     )
                 }
-                if !overlay_texts.is_empty() {
-                    self.overlay_text.render(&mut pass);
-                }
             }
+        }
+
+        if !overlay_texts.is_empty() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Overlay Text"),
+                color_attachments: &[Some(Self::load(&view))],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.overlay_text.render(&mut pass);
         }
 
         self.queue.submit(Some(encoder.finish()));

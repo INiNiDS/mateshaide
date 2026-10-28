@@ -1,6 +1,7 @@
 use crate::canvas::Canvas;
 use crate::canvas::DrawTool;
-use crate::dev::{TestMode, TestSpawner};
+#[cfg(debug_assertions)]
+use crate::dev::TestSpawner;
 use crate::export::bounds::{Rect, content_bounds, frame_camera, item_rects};
 use crate::export::pdf::{PdfBuilder, RASTER_H, RASTER_W, page_tiles};
 use crate::export::png::{CaptureState, CapturedPng};
@@ -35,6 +36,7 @@ struct PdfJob {
 pub struct Engine {
     pub canvas: Canvas,
     pub shapes: ShapeRegistry,
+    #[cfg(debug_assertions)]
     pub test_spawner: TestSpawner,
     pub draw: DrawTool,
     pub capture_cursor: Vec2,
@@ -60,6 +62,7 @@ impl Engine {
             renderer,
             draw: DrawTool::default(),
             last_frame_time: Instant::now(),
+            #[cfg(debug_assertions)]
             test_spawner: TestSpawner::default(),
             capture_cursor: Vec2::ZERO,
             capture: CaptureState::default(),
@@ -83,7 +86,8 @@ impl Engine {
     }
 
     pub fn redraw(&mut self) {
-        let swatch = if self.capture.is_idle() && self.test_spawner.mode == Some(TestMode::Spawn) {
+        #[cfg(debug_assertions)]
+        let swatch = if !self.is_capturing() {
             self.test_spawner.preview_color()
         } else {
             None
@@ -94,12 +98,29 @@ impl Engine {
             (s.width, s.height)
         };
 
+        #[cfg(debug_assertions)]
+        let dev_overlay = if self.is_capturing() {
+            Vec::new()
+        } else {
+            crate::dev::overlay::build_instances(&self.canvas, &self.shapes, &self.test_spawner)
+        };
+
         let overlay_texts = match self.capture_layout(sw, sh) {
             Some(l) => {
                 let b = capture_overlay::compute_button_rects(&l, sw, sh);
                 self.build_button_texts(&b, self.button_opacity())
             }
-            None => Vec::new(),
+            None => {
+                #[cfg(debug_assertions)]
+                let texts = if !self.is_capturing() {
+                    crate::dev::overlay::build_texts(&self.canvas, &self.test_spawner)
+                } else {
+                    Vec::new()
+                };
+                #[cfg(not(debug_assertions))]
+                let texts = Vec::new();
+                texts
+            }
         };
         let capture_params = Self::capture_params(&self.capture, sw, sh);
 
@@ -108,9 +129,12 @@ impl Engine {
             &self.canvas.instances,
             &self.canvas.texts,
             &self.shapes,
+            #[cfg(debug_assertions)]
             swatch,
             capture_params,
             &overlay_texts,
+            #[cfg(debug_assertions)]
+            &dev_overlay,
         );
     }
 
@@ -148,6 +172,10 @@ impl Engine {
         if self.pending_png.is_some() {
             return;
         }
+        #[cfg(debug_assertions)]
+        self.finish_test_interaction();
+        self.draw.end(&mut self.canvas);
+        self.canvas.cancel_pan();
         let Some(frame) = self.export_frame() else {
             tracing::warn!("canvas is empty");
             return;
@@ -204,7 +232,7 @@ impl Engine {
     }
 
     pub fn is_capturing(&self) -> bool {
-        !self.capture.is_idle()
+        self.pending_png.is_some() || !self.capture.is_idle()
     }
 
     pub fn is_in_capture_preview(&self) -> bool {
@@ -374,6 +402,9 @@ impl Engine {
         if self.pdf_job.is_some() {
             return;
         }
+        #[cfg(debug_assertions)]
+        self.finish_test_interaction();
+        self.draw.end(&mut self.canvas);
         let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
         let Some(content) = content_bounds(&rects) else {
             tracing::warn!("canvas is empty");
@@ -453,58 +484,23 @@ impl Engine {
         true
     }
 
-    pub fn toggle_test_spawn(&mut self) {
-        let was = matches!(self.test_spawner.mode, Some(TestMode::Spawn));
-        self.test_spawner.toggle_mode(TestMode::Spawn);
-        if !was
-            && self.test_spawner.current.is_none()
-            && let Some(k) = self.shapes.kind("rect")
-        {
-            self.test_spawner.select("rect", k);
-        }
-    }
-
-    pub fn select_test_shape(&mut self, name: &'static str) {
-        if !matches!(self.test_spawner.mode, Some(TestMode::Spawn)) {
-            tracing::warn!("not in spawn mode");
-            return;
-        }
-        if let Some(k) = self.shapes.kind(name) {
-            self.test_spawner.select(name, k);
-        }
-    }
-
-    pub fn spawn_test_shape(&mut self) {
-        match self.test_spawner.mode {
-            Some(TestMode::Spawn) => self.test_spawner.spawn(&mut self.canvas),
-            Some(TestMode::Erase) => {
-                self.test_spawner.erase_at_cursor(&mut self.canvas);
-            }
-            None => {}
-        }
-    }
-
-    pub fn toggle_test_color_mode(&mut self) {
-        self.test_spawner.toggle_color_mode();
-    }
-
-    pub fn next_test_picked_color(&mut self) {
-        self.test_spawner.next_picked_color();
-    }
-
-    pub fn toggle_test_eraser(&mut self) {
-        self.test_spawner.toggle_mode(TestMode::Erase);
-    }
-
-    pub fn erase_test_at_cursor(&mut self) {
-        self.test_spawner.erase_at_cursor(&mut self.canvas);
-    }
-
     pub fn undo(&mut self) -> bool {
+        self.draw.end(&mut self.canvas);
+        #[cfg(debug_assertions)]
+        {
+            self.finish_test_interaction();
+            self.test_spawner.clear_selection();
+        }
         self.canvas.undo()
     }
 
     pub fn redo(&mut self) -> bool {
+        self.draw.end(&mut self.canvas);
+        #[cfg(debug_assertions)]
+        {
+            self.finish_test_interaction();
+            self.test_spawner.clear_selection();
+        }
         self.canvas.redo()
     }
 }

@@ -1,6 +1,7 @@
 mod app;
 pub mod canvas;
 pub mod core;
+#[cfg(debug_assertions)]
 pub(crate) mod dev;
 pub mod engine;
 pub mod graphics;

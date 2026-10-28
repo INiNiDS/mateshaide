@@ -1,13 +1,20 @@
+#[cfg(debug_assertions)]
 use crate::core::color::Color;
+#[cfg(debug_assertions)]
 use crate::shape::instance::ShapeInstance;
+#[cfg(debug_assertions)]
 use crate::theme::palette;
 
 pub(super) const OVERLAY_CAP: usize = 32;
 
+#[cfg(debug_assertions)]
 const SWATCH_PX: f32 = 48.0;
+#[cfg(debug_assertions)]
 const SWATCH_BORDER_PX: f32 = 2.0;
+#[cfg(debug_assertions)]
 const SWATCH_MARGIN_PX: f32 = 16.0;
 
+#[cfg(debug_assertions)]
 pub(super) fn build_swatch_instances(color: Color, width: u32, height: u32) -> Vec<ShapeInstance> {
     let width = width.max(1) as f32;
     let height = height.max(1) as f32;

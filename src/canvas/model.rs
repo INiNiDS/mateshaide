@@ -42,6 +42,11 @@ impl Canvas {
         }
     }
 
+    #[cfg(debug_assertions)]
+    pub(crate) fn record_history(&mut self) {
+        self.history.record_snapshot(&self.instances);
+    }
+
     pub fn add_shape(&mut self, shape: ShapeInstance) {
         self.history.record_snapshot(&self.instances);
         self.instances.push(shape);

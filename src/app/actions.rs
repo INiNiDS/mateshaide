@@ -12,6 +12,11 @@ pub(super) fn register(input: &mut InputManager) {
 
 fn register_draw_actions(input: &mut InputManager) {
     input.register_action("toggle_draw", |engine: &mut Engine| {
+        engine.draw.end(&mut engine.canvas);
+        #[cfg(debug_assertions)]
+        if !engine.draw.enabled {
+            engine.disable_test_tools();
+        }
         engine.draw.toggle();
     });
 
@@ -38,14 +43,20 @@ fn register_history_actions(input: &mut InputManager) {
 
 fn register_camera_actions(input: &mut InputManager) {
     input.register_action("zoom_in", |engine: &mut Engine| {
+        #[cfg(debug_assertions)]
+        engine.finish_test_interaction();
         engine.canvas.zoom_at_center(1.0);
     });
 
     input.register_action("zoom_out", |engine: &mut Engine| {
+        #[cfg(debug_assertions)]
+        engine.finish_test_interaction();
         engine.canvas.zoom_at_center(-1.0);
     });
 
     input.register_action("reset_view", |engine: &mut Engine| {
+        #[cfg(debug_assertions)]
+        engine.finish_test_interaction();
         engine.canvas.reset_view();
     });
 
