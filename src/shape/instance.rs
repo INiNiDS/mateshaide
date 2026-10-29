@@ -8,7 +8,7 @@ pub const KIND_CIRCLE: u32 = 1;
 pub const KIND_LINE: u32 = 2;
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ShapeInstance {
     pub center: [f32; 2],
     pub size: [f32; 2],

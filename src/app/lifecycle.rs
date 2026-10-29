@@ -109,6 +109,14 @@ impl ApplicationHandler for App {
             return;
         }
 
+        if engine.handle_plugin_event(&event, self.input.cursor_position(), self.input.modifiers()) {
+            let update = self.input.process_event_without_actions(&event);
+            if matches!(update, InputUpdate::FocusLost) {
+                Self::handle_input_update(&self.input, engine, update, &window);
+            }
+            window.request_redraw();
+            return;
+        }
         let update = self.input.process_event(&event, engine);
 
         Self::handle_input_update(&self.input, engine, update, &window);

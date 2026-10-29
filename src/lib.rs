@@ -1,4 +1,5 @@
 mod app;
+pub mod plugins;
 pub mod canvas;
 pub mod core;
 #[cfg(debug_assertions)]

@@ -31,6 +31,7 @@ struct PdfJob {
     tiles: VecDeque<Rect>,
     builder: PdfBuilder,
     inflight: Option<PendingReadback>,
+    scene: crate::plugins::Scene,
 }
 
 pub struct Engine {
@@ -39,6 +40,10 @@ pub struct Engine {
     #[cfg(debug_assertions)]
     pub test_spawner: TestSpawner,
     pub draw: DrawTool,
+    pub(crate) plugins: crate::plugins::PluginManager,
+    pub(crate) plugin_page: crate::plugins::PluginPage,
+    pub(crate) plugin_pointer_captured: bool,
+    pub(crate) plugin_ime_composing: bool,
     pub capture_cursor: Vec2,
     renderer: Renderer,
     last_frame_time: Instant,
@@ -49,6 +54,7 @@ pub struct Engine {
 
 impl Engine {
     pub async fn new(window: Arc<Window>) -> Result<Self, EngineError> {
+        crate::plugins::platform::bind_window(Arc::clone(&window));
         let size = window.inner_size();
         let mut canvas = Canvas::new(size.width as f32, size.height as f32);
         let shapes = ShapeRegistry::with_builtins()?;
@@ -61,6 +67,10 @@ impl Engine {
             shapes,
             renderer,
             draw: DrawTool::default(),
+            plugins: crate::plugins::PluginManager::load(),
+            plugin_page: crate::plugins::PluginPage::default(),
+            plugin_pointer_captured: false,
+            plugin_ime_composing: false,
             last_frame_time: Instant::now(),
             #[cfg(debug_assertions)]
             test_spawner: TestSpawner::default(),
@@ -122,12 +132,14 @@ impl Engine {
                 texts
             }
         };
+        let plugin_ui = self.plugin_frame();
+        let scene = self.plugin_scene(true);
         let capture_params = Self::capture_params(&self.capture, sw, sh);
 
         self.renderer.redraw(
             &self.canvas.camera,
-            &self.canvas.instances,
-            &self.canvas.texts,
+            &scene.shapes,
+            &scene.texts,
             &self.shapes,
             #[cfg(debug_assertions)]
             swatch,
@@ -135,6 +147,7 @@ impl Engine {
             &overlay_texts,
             #[cfg(debug_assertions)]
             &dev_overlay,
+            &plugin_ui,
         );
     }
 
@@ -147,7 +160,8 @@ impl Engine {
         let png = self.poll_pending_png();
         let pdf = self.poll_pdf();
         let cap = self.update_capture();
-        pan || png || pdf || cap
+        let plugins = self.poll_plugin_requests();
+        pan || png || pdf || cap || plugins
     }
 
     pub fn resize(&mut self, w: u32, h: u32) {
@@ -163,12 +177,14 @@ impl Engine {
         self.renderer.size()
     }
 
-    fn export_frame(&self) -> Option<Rect> {
-        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+    fn export_frame(&mut self) -> Option<Rect> {
+        let scene = self.plugin_scene(false);
+        let rects = item_rects(&scene.shapes, &scene.texts);
         Some(content_bounds(&rects)?.padded(export::PADDING))
     }
 
     pub fn begin_png_capture(&mut self) {
+        crate::plugins::platform::editor_focus(false, 0.0, 0.0);
         if self.pending_png.is_some() {
             return;
         }
@@ -183,14 +199,11 @@ impl Engine {
         let (w, h) = export::png::pixel_size(frame);
         let camera = frame_camera(frame, w, h);
 
-        match self.renderer.start_export(
-            &camera,
-            &self.canvas.instances,
-            &self.canvas.texts,
-            &self.shapes,
-            w,
-            h,
-        ) {
+        let scene = self.plugin_scene(false);
+        match self
+            .renderer
+            .start_export(&camera, &scene.shapes, &scene.texts, &self.shapes, w, h)
+        {
             Ok(rb) => self.pending_png = Some(rb),
             Err(e) => tracing::error!("capture failed: {e}"),
         }
@@ -405,7 +418,8 @@ impl Engine {
         #[cfg(debug_assertions)]
         self.finish_test_interaction();
         self.draw.end(&mut self.canvas);
-        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+        let scene = self.plugin_scene(false);
+        let rects = item_rects(&scene.shapes, &scene.texts);
         let Some(content) = content_bounds(&rects) else {
             tracing::warn!("canvas is empty");
             return;
@@ -416,6 +430,7 @@ impl Engine {
                     tiles: tiles.into(),
                     builder: PdfBuilder::new(),
                     inflight: None,
+                    scene,
                 });
             }
             Err(e) => tracing::error!("pdf failed: {e}"),
@@ -451,8 +466,8 @@ impl Engine {
             let camera = frame_camera(tile, RASTER_W, RASTER_H);
             match self.renderer.start_export(
                 &camera,
-                &self.canvas.instances,
-                &self.canvas.texts,
+                &job.scene.shapes,
+                &job.scene.texts,
                 &self.shapes,
                 RASTER_W,
                 RASTER_H,
@@ -491,7 +506,12 @@ impl Engine {
             self.finish_test_interaction();
             self.test_spawner.clear_selection();
         }
-        self.canvas.undo()
+        let changed = self.canvas.undo();
+        if changed {
+            self.plugins.document_changed(&mut self.canvas);
+        }
+        self.sync_plugin_focus();
+        changed
     }
 
     pub fn redo(&mut self) -> bool {
@@ -501,7 +521,12 @@ impl Engine {
             self.finish_test_interaction();
             self.test_spawner.clear_selection();
         }
-        self.canvas.redo()
+        let changed = self.canvas.redo();
+        if changed {
+            self.plugins.document_changed(&mut self.canvas);
+        }
+        self.sync_plugin_focus();
+        changed
     }
 }
 

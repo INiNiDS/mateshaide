@@ -15,6 +15,7 @@ impl Engine {
     }
 
     fn toggle_test_mode(&mut self, mode: TestMode) {
+        self.clear_plugin_tool();
         self.finish_test_interaction();
         self.draw.end(&mut self.canvas);
         self.draw.enabled = false;

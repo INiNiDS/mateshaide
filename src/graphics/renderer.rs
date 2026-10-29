@@ -42,6 +42,9 @@ pub struct Renderer {
     instance_capacity: usize,
     text: TextLayer,
     overlay_text: TextLayer,
+    plugin_text: TextLayer,
+    plugin_buffer: wgpu::Buffer,
+    plugin_capacity: usize,
     overlay_bind_group: wgpu::BindGroup,
     overlay_instance_buffer: wgpu::Buffer,
     #[cfg(debug_assertions)]
@@ -83,6 +86,8 @@ impl Renderer {
             })
             .await
             .map_err(|e| RendererError::NoAdapter(e.to_string()))?;
+        let adapter_info = adapter.get_info();
+        tracing::info!("Adapter info: {:?}", adapter_info);
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default())
@@ -209,6 +214,13 @@ impl Renderer {
 
         let text = TextLayer::new(&device, &queue, config.format);
         let overlay_text = TextLayer::new(&device, &queue, config.format);
+        let plugin_text = TextLayer::new(&device, &queue, config.format);
+        let plugin_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Plugin UI instances"),
+            size: (64 * size_of::<ShapeInstance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let glow = GlowOverlay::new(&device, config.format);
         let capture_overlay = CaptureOverlay::new(&device, config.format);
 
@@ -229,6 +241,9 @@ impl Renderer {
             instance_capacity: initial_capacity,
             text,
             overlay_text,
+            plugin_text,
+            plugin_buffer,
+            plugin_capacity: 64,
             overlay_bind_group,
             overlay_instance_buffer,
             #[cfg(debug_assertions)]
@@ -297,6 +312,7 @@ impl Renderer {
         capture: CaptureOverlayParams<'_>,
         overlay_texts: &[CanvasText],
         #[cfg(debug_assertions)] dev_overlay: &[ShapeInstance],
+        plugin_ui: &crate::plugins::UiFrame,
     ) {
         self.update_pipeline(shapes);
         self.queue.write_buffer(
@@ -321,9 +337,30 @@ impl Renderer {
 
         self.text.prepare(&self.device, &self.queue, camera, texts);
         if !overlay_texts.is_empty() {
-            self.overlay_text.prepare(&self.device, &self.queue, camera, overlay_texts);
+            self.overlay_text
+                .prepare(&self.device, &self.queue, camera, overlay_texts);
         }
 
+        if plugin_ui.shapes.len() > self.plugin_capacity {
+            self.plugin_capacity = plugin_ui.shapes.len().next_power_of_two();
+            self.plugin_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Plugin UI grow"),
+                size: (self.plugin_capacity * size_of::<ShapeInstance>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        if !plugin_ui.shapes.is_empty() {
+            self.queue.write_buffer(
+                &self.plugin_buffer,
+                0,
+                bytemuck::cast_slice(&plugin_ui.shapes),
+            );
+        }
+        if !plugin_ui.texts.is_empty() {
+            self.plugin_text
+                .prepare(&self.device, &self.queue, camera, &plugin_ui.texts);
+        }
         let output = match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(t) => t,
             CurrentSurfaceTexture::Suboptimal(t) => {
@@ -378,7 +415,9 @@ impl Renderer {
         if !dev_overlay.is_empty() {
             debug_assert!(dev_overlay.len() <= crate::dev::overlay::INSTANCES_CAP);
             self.queue.write_buffer(
-                &self.dev_instance_buffer, 0, bytemuck::cast_slice(dev_overlay),
+                &self.dev_instance_buffer,
+                0,
+                bytemuck::cast_slice(dev_overlay),
             );
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Dev Editor"),
@@ -389,7 +428,9 @@ impl Renderer {
                 multiview_mask: None,
             });
             self.render_pipeline.draw(
-                &mut pass, &self.camera_bind_group, &self.dev_instance_buffer,
+                &mut pass,
+                &self.camera_bind_group,
+                &self.dev_instance_buffer,
                 dev_overlay.len() as u32,
             );
         }
@@ -505,10 +546,30 @@ impl Renderer {
             self.overlay_text.render(&mut pass);
         }
 
+        if !plugin_ui.shapes.is_empty() || !plugin_ui.texts.is_empty() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Plugin UI"),
+                color_attachments: &[Some(Self::load(&view))],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.render_pipeline.draw(
+                &mut pass,
+                &self.overlay_bind_group,
+                &self.plugin_buffer,
+                plugin_ui.shapes.len() as u32,
+            );
+            if !plugin_ui.texts.is_empty() {
+                self.plugin_text.render(&mut pass);
+            }
+        }
         self.queue.submit(Some(encoder.finish()));
         self.queue.present(output);
         self.text.trim();
         self.overlay_text.trim();
+        self.plugin_text.trim();
     }
 
     pub fn start_export(

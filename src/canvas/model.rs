@@ -22,7 +22,9 @@ pub struct Canvas {
     stroke_active: bool,
     stroke_last: Option<Vec2>,
     stroke_segments: usize,
+    stroke_snapshot: bool,
     pub texts: Vec<CanvasText>,
+    pub plugin_nodes: Vec<crate::plugins::PluginNode>,
 }
 
 impl Canvas {
@@ -38,22 +40,26 @@ impl Canvas {
             stroke_active: false,
             stroke_last: None,
             stroke_segments: 0,
+            stroke_snapshot: false,
             texts: Vec::new(),
+            plugin_nodes: Vec::new(),
         }
     }
 
-    #[cfg(debug_assertions)]
     pub(crate) fn record_history(&mut self) {
-        self.history.record_snapshot(&self.instances);
+        self.history
+            .record_snapshot(&self.instances, &self.texts, &self.plugin_nodes);
     }
 
     pub fn add_shape(&mut self, shape: ShapeInstance) {
-        self.history.record_snapshot(&self.instances);
+        self.history
+            .record_snapshot(&self.instances, &self.texts, &self.plugin_nodes);
         self.instances.push(shape);
     }
 
     pub fn add_text(&mut self, text: CanvasText) {
-        self.history.record_snapshot(&self.instances);
+        self.history
+            .record_snapshot(&self.instances, &self.texts, &self.plugin_nodes);
         self.texts.push(text);
     }
 
@@ -62,7 +68,8 @@ impl Canvas {
             return false;
         }
 
-        self.history.record_snapshot(&self.instances);
+        self.history
+            .record_snapshot(&self.instances, &self.texts, &self.plugin_nodes);
         self.instances.remove(index);
         true
     }
@@ -86,11 +93,13 @@ impl Canvas {
     }
 
     pub fn undo(&mut self) -> bool {
-        self.history.undo(&mut self.instances)
+        self.history
+            .undo(&mut self.instances, &mut self.texts, &mut self.plugin_nodes)
     }
 
     pub fn redo(&mut self) -> bool {
-        self.history.redo(&mut self.instances)
+        self.history
+            .redo(&mut self.instances, &mut self.texts, &mut self.plugin_nodes)
     }
 
     #[must_use]
@@ -103,7 +112,9 @@ impl Canvas {
             return;
         }
 
-        self.history.record_snapshot(&self.instances);
+        self.stroke_snapshot =
+            self.history
+                .record_snapshot(&self.instances, &self.texts, &self.plugin_nodes);
         self.stroke_active = true;
         self.stroke_last = None;
         self.stroke_segments = 0;
@@ -138,7 +149,7 @@ impl Canvas {
         self.stroke_active = false;
         self.stroke_last = None;
 
-        if self.stroke_segments == 0 {
+        if self.stroke_segments == 0 && self.stroke_snapshot {
             self.history.discard_last_undo();
         }
     }

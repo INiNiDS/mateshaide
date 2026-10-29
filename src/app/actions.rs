@@ -12,6 +12,7 @@ pub(super) fn register(input: &mut InputManager) {
 
 fn register_draw_actions(input: &mut InputManager) {
     input.register_action("toggle_draw", |engine: &mut Engine| {
+        engine.clear_plugin_tool();
         engine.draw.end(&mut engine.canvas);
         #[cfg(debug_assertions)]
         if !engine.draw.enabled {

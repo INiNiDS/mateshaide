@@ -26,6 +26,7 @@ impl App {
         let mut input = InputManager::new();
 
         actions::register(&mut input);
+        #[cfg(debug_assertions)]
         dev_actions::register(&mut input);
 
         Self {

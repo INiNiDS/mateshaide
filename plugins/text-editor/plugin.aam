@@ -1,0 +1,11 @@
+id = "org.matesha.text"
+name = "Text Editor"
+version = "1.0.0"
+description = "Basic Unicode text editing. Select Text, click the canvas and type. Supports IME, newlines, grapheme deletion and caret navigation."
+authors = ["MateshaIDE contributors"]
+repository = "https://github.com/ininids/mateshaide"  # Builtin
+icon = "assets/icon.png"
+entry = "main.rhai"
+api = "^1.0"
+permissions = ["document.write"]
+dependencies = []

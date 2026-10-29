@@ -79,6 +79,7 @@ impl TextLayer {
 
             let metrics = Metrics::new(t.size, t.size * 1.25);
             let mut buffer = Buffer::new(&mut self.font_system, metrics);
+            buffer.set_wrap(&mut self.font_system, glyphon::Wrap::None);
             buffer.set_text(
                 &t.text,
                 &Attrs::new()
@@ -164,8 +165,8 @@ impl TextLayer {
 }
 
 fn is_visible(screen: Vec2, px: f32, text: &str, screen_size: Vec2) -> bool {
-    let approx_w = text.chars().count() as f32 * px * 0.7;
-    let approx_h = px * 1.25;
+    let approx_w = text.lines().map(|s|s.chars().count()).max().unwrap_or(0) as f32 * px * 1.5;
+    let approx_h = text.split('\n').count().max(1) as f32 * px * 1.25;
 
     let right = screen.x + approx_w;
     let bottom = screen.y + approx_h;
