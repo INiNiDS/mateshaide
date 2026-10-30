@@ -28,7 +28,6 @@ web-time = "1.1.0"
 glyphon = "0.12.0"
 printpdf = "0.12.8"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "ico"] }
-rhai = { version = "1.27.0", features = ["compact_str", "serde"] }
 semver = "1.0.28"
 aam-rs = { version = "2.9.0", default-features = false, features = ["hash-fx"] }
 serde = { version = "1.0.192", features = ["derive"] }
@@ -36,9 +35,9 @@ serde_json = "1.0.154"
 sha2 = "0.11"
 unicode-segmentation = "1.13.3"
 zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
-log = "0.4.34"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "=0.12.2", features = ["lua54", "vendored"] }
 pollster = "1.0.1"
 tracing-subscriber = "0.3"
 rfd = "0.17.2"
@@ -55,7 +54,6 @@ web-sys = { version = "0.3", features = [
     "Blob", "BlobPropertyBag", "Url", "Navigator", "Clipboard", "ClipboardItem", "Storage"
 ] }
 js-sys = "0.3.106"
-rhai = { version = "1.27.0", features = ["wasm-bindgen"] }
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
