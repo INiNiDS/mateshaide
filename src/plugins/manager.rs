@@ -3,10 +3,9 @@ use super::{
     manifest::HOST_API,
     package::{self, Package},
     render::Scene,
-    runtime::{Contributions, Runtime, dynamic},
+    runtime::{Contributions, Runtime, json_value},
 };
 use anyhow::{Context, Result, bail, ensure};
-use rhai::Dynamic;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -86,7 +85,7 @@ impl PluginManager {
             self.disable(&plan);
         }
     }
-    // TO DO TODO
+    // HIGH COMPLEXITY TODO
     pub fn load() -> Self {
         let settings = super::platform::load_settings();
         let mut out = Self {
@@ -118,33 +117,7 @@ impl PluginManager {
         }
         out
     }
-    fn scan(&mut self) {
-        let (packages, mut errors) = package::discover();
-        let mut duplicates = BTreeSet::new();
-        for package in packages {
-            let id = package.manifest.id.clone();
-            if self.entries.contains_key(&id) {
-                duplicates.insert(id);
-                continue;
-            }
-            self.entries.insert(
-                id,
-                Entry {
-                    package,
-                    runtime: None,
-                    contributions: Contributions::default(),
-                    error: None,
-                },
-            );
-        }
-        for id in duplicates {
-            self.entries.remove(&id);
-            errors.push(format!("Duplicate plugin ID blocked: {id}"));
-        }
-        if !errors.is_empty() {
-            self.notice = errors.join("\n");
-        }
-    }
+
     pub fn rescan(&mut self) {
         let old: Vec<_> = self.entries.keys().cloned().collect();
         self.disable(&old);
@@ -281,49 +254,7 @@ impl PluginManager {
             self.persist();
         }
     }
-    fn enable(&mut self, plan: &[String]) -> Result<()> {
-        let mut added = Vec::new();
-        for id in plan {
-            if self.active(id) {
-                continue;
-            }
-            let result: Result<()> = (|| {
-                let e = self.entries.get_mut(id).context("plugin disappeared")?;
-                let mut runtime = Runtime::new(&e.package)?;
-                let c = runtime.activate()?;
-                e.runtime = Some(runtime);
-                e.contributions = c;
-                e.error = None;
-                Ok(())
-            })();
-            if let Err(error) = result {
-                self.disable(&added);
-                return Err(error);
-            }
-            added.push(id.clone());
-        }
-        Ok(())
-    }
-    fn disable(&mut self, plan: &[String]) {
-        self.history_group = None;
-        self.group_recorded = false;
-        for id in plan.iter().rev() {
-            if let Some(e) = self.entries.get_mut(id) {
-                if let Some(mut r) = e.runtime.take() {
-                    if r.has("deactivate", 0) {
-                        let _ = r.call("deactivate", vec![]);
-                    }
-                }
-                e.contributions = Contributions::default();
-            }
-            if self.selected.as_ref().is_some_and(|(p, _)| p == id) {
-                self.selected = None;
-            }
-            if self.focus.as_ref() == Some(id) {
-                self.focus = None;
-            }
-        }
-    }
+
     pub fn persist(&mut self) {
         if let Err(e) = super::platform::save_settings(&self.settings) {
             self.notice = format!("Could not save plugin settings: {e:#}");
@@ -345,23 +276,8 @@ impl PluginManager {
         }
         self.focus = None;
     }
-    fn context(&mut self, id: &str, nodes: &[PluginNode]) -> Result<Dynamic> {
-        let entry = self.entries.get(id).context("unknown plugin")?;
-        let visible: Vec<_> = nodes
-            .iter()
-            .filter(|n| n.owner == id || entry.package.manifest.permits("document.read"))
-            .collect();
-        self.serial = self.serial.wrapping_add(1);
-        let mut new_id = format!("{id}:{}", self.serial);
-        while nodes.iter().any(|n| n.id == new_id) {
-            self.serial = self.serial.wrapping_add(1);
-            new_id = format!("{id}:{}", self.serial);
-        }
-        dynamic(
-            &json!({"nodes":visible,"new_id":new_id,"tool":self.selected.as_ref().filter(|(p,_)|p==id).map_or("",|(_,t)|t.as_str()),"focused":self.focus.as_deref()==Some(id),"api":HOST_API}),
-        )
-    }
-    // TODO
+
+    // HIGH COMPLEXITY TODO
     pub fn dispatch(&mut self, id: &str, event: Value, canvas: &mut crate::Canvas) {
         if !self.active(id) {
             return;
@@ -381,9 +297,10 @@ impl PluginManager {
         let mut nodes = canvas.plugin_nodes.clone();
         let mut budget = 64usize;
         let mut effects = Vec::new();
+        let event_started = web_time::Instant::now();
         let result: Result<()> = (|| {
             let ctx = self.context(id, &nodes)?;
-            let cmds = self.invoke(id, "handle", vec![dynamic(&event)?, ctx])?;
+            let cmds = self.invoke(id, "handle", vec![json_value(&event)?, ctx])?;
             self.apply(
                 id,
                 &cmds,
@@ -391,7 +308,12 @@ impl PluginManager {
                 &mut vec![id.to_owned()],
                 &mut budget,
                 &mut effects,
+                &event_started,
             )?;
+            ensure!(
+                event_started.elapsed().as_millis() <= 350,
+                "event time budget exceeded"
+            );
             ensure!(
                 nodes.len() <= 5000 && serde_json::to_vec(&nodes)?.len() <= 16 * 1024 * 1024,
                 "document plugin data limit"
@@ -429,24 +351,129 @@ impl PluginManager {
             self.group_recorded = false;
         }
     }
-    fn invoke(&mut self, id: &str, name: &str, args: Vec<Dynamic>) -> Result<Value> {
-        self.entries
-            .get_mut(id)
-            .and_then(|e| e.runtime.as_mut())
-            .context("plugin is not active")?
-            .call(name, args)
-            .with_context(|| format!("{id}::{name}"))
+
+    pub fn document_changed(&mut self, canvas: &mut crate::Canvas) {
+        self.history_group = None;
+        self.group_recorded = false;
+        let ids: Vec<_> = self
+            .entries
+            .iter()
+            .filter(|(_, e)| e.runtime.is_some())
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            if let Ok(ctx) = self.context(&id, &canvas.plugin_nodes) {
+                let _ = self.invoke(
+                    &id,
+                    "handle",
+                    vec![
+                        json_value(&json!({"name":"document.changed"})).unwrap_or(Value::Null),
+                        ctx,
+                    ],
+                );
+            }
+        }
     }
-    fn permission(&self, id: &str, p: &str) -> Result<()> {
-        ensure!(
-            self.entries
-                .get(id)
-                .is_some_and(|e| e.package.manifest.permits(p)),
-            "{id} lacks permission {p}"
-        );
-        Ok(())
+    // HIGH COMPLEXITY TODO
+    pub fn project(&mut self, nodes: &[PluginNode], overlay: bool, zoom: f32) -> Scene {
+        let mut scene = Scene::default();
+        let mut errors = Vec::new();
+        let started = web_time::Instant::now();
+        for node in nodes {
+            let rendered: Result<()> = (|| {
+                ensure!(
+                    started.elapsed().as_millis() <= 80,
+                    "frame script budget exceeded"
+                );
+                let ctx = json_value(
+                    &json!({"zoom":zoom,"api":HOST_API,"focused":self.focus.as_deref()==Some(node.owner.as_str())}),
+                )?;
+                let e = self
+                    .entries
+                    .get_mut(&node.owner)
+                    .context("plugin missing")?;
+                ensure!(
+                    e.contributions.object_types.contains(&node.object_type),
+                    "object type unavailable"
+                );
+                let r = e.runtime.as_mut().context("plugin disabled")?;
+                let out = r.pure_call("render", vec![json_value(node)?, ctx])?;
+                scene.extend_primitives(&out)?;
+                Ok(())
+            })();
+            if let Err(e) = rendered {
+                scene.placeholder(node);
+                if self.active(&node.owner) {
+                    errors.push(format!("{}: {e:#}", node.owner));
+                }
+            }
+            scene.shapes.push(crate::ShapeInstance::rect(
+                node.x,
+                node.y - node.height,
+                node.width,
+                node.height,
+                crate::Color::TRANSPARENT,
+            ));
+            if scene.len() > 65536 {
+                self.notice = "Scene primitive budget exceeded".into();
+                break;
+            }
+        }
+        if overlay {
+            if let Some((id, _)) = self.selected.clone() {
+                if self.active(&id) {
+                    let context = json!({"nodes":nodes.iter().filter(|n|n.owner==id).collect::<Vec<_>>(),"focused":self.focus.as_deref()==Some(id.as_str()),"zoom":zoom});
+                    if let Some(r) = self.entries.get_mut(&id).and_then(|e| e.runtime.as_mut()) {
+                        if r.has("overlay") {
+                            match r.pure_call(
+                                "overlay",
+                                vec![json_value(&context).unwrap_or(Value::Null)],
+                            ) {
+                                Ok(v) => {
+                                    if let Err(e) = scene.extend_primitives(&v) {
+                                        errors.push(e.to_string());
+                                    }
+                                }
+                                Err(e) => errors.push(e.to_string()),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(error) = errors.first() {
+            self.notice = format!("Render: {error}");
+        }
+        scene
     }
-    // TODO
+    fn scan(&mut self) {
+        let (packages, mut errors) = package::discover();
+        let mut duplicates = BTreeSet::new();
+        for package in packages {
+            let id = package.manifest.id.clone();
+            if self.entries.contains_key(&id) {
+                duplicates.insert(id);
+                continue;
+            }
+            self.entries.insert(
+                id,
+                Entry {
+                    package,
+                    runtime: None,
+                    contributions: Contributions::default(),
+                    error: None,
+                },
+            );
+        }
+        for id in duplicates {
+            self.entries.remove(&id);
+            errors.push(format!("Duplicate plugin ID blocked: {id}"));
+        }
+        if !errors.is_empty() {
+            self.notice = errors.join("\n");
+        }
+    }
+    // HIGH COMPLEXITY TODO
     fn apply(
         &mut self,
         id: &str,
@@ -455,12 +482,17 @@ impl PluginManager {
         chain: &mut Vec<String>,
         budget: &mut usize,
         effects: &mut Vec<String>,
+        started: &web_time::Instant,
     ) -> Result<()> {
         let cmds = value
             .as_array()
             .context("callback must return an array of commands")?;
         ensure!(cmds.len() <= 128, "too many commands");
         for cmd in cmds {
+            ensure!(
+                started.elapsed().as_millis() <= 350,
+                "event time budget exceeded"
+            );
             ensure!(*budget > 0, "cross-plugin/command budget exceeded");
             *budget -= 1;
             let kind = cmd["kind"].as_str().context("missing command kind")?;
@@ -547,16 +579,24 @@ impl PluginManager {
                     let reply = self.invoke(
                         target,
                         "service",
-                        vec![dynamic(&service)?, dynamic(&cmd["args"])?, ctx],
+                        vec![json_value(&service)?, json_value(&cmd["args"])?, ctx],
                     )?;
                     chain.push(target.into());
-                    self.apply(target, &reply["commands"], nodes, chain, budget, effects)?;
+                    self.apply(
+                        target,
+                        &reply["commands"],
+                        nodes,
+                        chain,
+                        budget,
+                        effects,
+                        started,
+                    )?;
                     chain.pop();
                     if let Some(token) = cmd.get("token") {
                         let ctx = self.context(id, nodes)?;
                         let event = json!({"name":"service.result","token":token,"value":reply["value"],"plugin":target,"service":service});
-                        let commands = self.invoke(id, "handle", vec![dynamic(&event)?, ctx])?;
-                        self.apply(id, &commands, nodes, chain, budget, effects)?;
+                        let commands = self.invoke(id, "handle", vec![json_value(&event)?, ctx])?;
+                        self.apply(id, &commands, nodes, chain, budget, effects, started)?;
                     }
                 }
                 "clipboard.write" => {
@@ -575,106 +615,89 @@ impl PluginManager {
                         }
                     };
                     let ctx = self.context(id, nodes)?;
-                    let out = self.invoke(id, "handle", vec![dynamic(&ev)?, ctx])?;
-                    self.apply(id, &out, nodes, chain, budget, effects)?;
+                    let out = self.invoke(id, "handle", vec![json_value(&ev)?, ctx])?;
+                    self.apply(id, &out, nodes, chain, budget, effects, started)?;
                 }
                 _ => bail!("unknown host operation: {kind}"),
             }
         }
         Ok(())
     }
-    pub fn document_changed(&mut self, canvas: &mut crate::Canvas) {
-        self.history_group = None;
-        self.group_recorded = false;
-        let ids: Vec<_> = self
-            .entries
-            .iter()
-            .filter(|(_, e)| e.runtime.is_some())
-            .map(|(id, _)| id.clone())
-            .collect();
-        for id in ids {
-            if let Ok(ctx) = self.context(&id, &canvas.plugin_nodes) {
-                let _ = self.invoke(
-                    &id,
-                    "handle",
-                    vec![
-                        dynamic(&json!({"name":"document.changed"})).unwrap_or(Dynamic::UNIT),
-                        ctx,
-                    ],
-                );
-            }
-        }
+    fn invoke(&mut self, id: &str, name: &str, args: Vec<Value>) -> Result<Value> {
+        self.entries
+            .get_mut(id)
+            .and_then(|e| e.runtime.as_mut())
+            .context("plugin is not active")?
+            .call(name, args)
+            .with_context(|| format!("{id}::{name}"))
     }
-    // Why i writing so big functions... Ok T O D O (for IDE - TODO)
-    pub fn project(&mut self, nodes: &[PluginNode], overlay: bool, zoom: f32) -> Scene {
-        let mut scene = Scene::default();
-        let mut errors = Vec::new();
-        let started = web_time::Instant::now();
-        for node in nodes {
-            let rendered: Result<()> = (|| {
-                ensure!(
-                    started.elapsed().as_millis() <= 80,
-                    "frame script budget exceeded"
-                );
-                let ctx = dynamic(
-                    &json!({"zoom":zoom,"api":HOST_API,"focused":self.focus.as_deref()==Some(node.owner.as_str())}),
-                )?;
-                let e = self
-                    .entries
-                    .get_mut(&node.owner)
-                    .context("plugin missing")?;
-                ensure!(
-                    e.contributions.object_types.contains(&node.object_type),
-                    "object type unavailable"
-                );
-                let r = e.runtime.as_mut().context("plugin disabled")?;
-                let out = r.pure_call("render", vec![dynamic(node)?, ctx])?;
-                scene.extend_primitives(&out)?;
+    fn permission(&self, id: &str, p: &str) -> Result<()> {
+        ensure!(
+            self.entries
+                .get(id)
+                .is_some_and(|e| e.package.manifest.permits(p)),
+            "{id} lacks permission {p}"
+        );
+        Ok(())
+    }
+    fn context(&mut self, id: &str, nodes: &[PluginNode]) -> Result<Value> {
+        let entry = self.entries.get(id).context("unknown plugin")?;
+        let visible: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.owner == id || entry.package.manifest.permits("document.read"))
+            .collect();
+        self.serial = self.serial.wrapping_add(1);
+        let mut new_id = format!("{id}:{}", self.serial);
+        while nodes.iter().any(|n| n.id == new_id) {
+            self.serial = self.serial.wrapping_add(1);
+            new_id = format!("{id}:{}", self.serial);
+        }
+        json_value(
+            &json!({"nodes":visible,"new_id":new_id,"tool":self.selected.as_ref().filter(|(p,_)|p==id).map_or("",|(_,t)|t.as_str()),"focused":self.focus.as_deref()==Some(id),"api":HOST_API}),
+        )
+    }
+    fn enable(&mut self, plan: &[String]) -> Result<()> {
+        let mut added = Vec::new();
+        for id in plan {
+            if self.active(id) {
+                continue;
+            }
+            let result: Result<()> = (|| {
+                let e = self.entries.get_mut(id).context("plugin disappeared")?;
+                let mut runtime = Runtime::new(&e.package)?;
+                let c = runtime.activate()?;
+                e.runtime = Some(runtime);
+                e.contributions = c;
+                e.error = None;
                 Ok(())
             })();
-            if let Err(e) = rendered {
-                scene.placeholder(node);
-                if self.active(&node.owner) {
-                    errors.push(format!("{}: {e:#}", node.owner));
-                }
+            if let Err(error) = result {
+                self.disable(&added);
+                return Err(error);
             }
-            scene.shapes.push(crate::ShapeInstance::rect(
-                node.x,
-                node.y - node.height,
-                node.width,
-                node.height,
-                crate::Color::TRANSPARENT,
-            ));
-            if scene.len() > 65536 {
-                self.notice = "Scene primitive budget exceeded".into();
-                break;
-            }
+            added.push(id.clone());
         }
-        if overlay {
-            if let Some((id, _)) = self.selected.clone() {
-                if self.active(&id) {
-                    let context = json!({"nodes":nodes.iter().filter(|n|n.owner==id).collect::<Vec<_>>(),"focused":self.focus.as_deref()==Some(id.as_str()),"zoom":zoom});
-                    if let Some(r) = self.entries.get_mut(&id).and_then(|e| e.runtime.as_mut()) {
-                        if r.has("overlay", 1) {
-                            match r.pure_call(
-                                "overlay",
-                                vec![dynamic(&context).unwrap_or(Dynamic::UNIT)],
-                            ) {
-                                Ok(v) => {
-                                    if let Err(e) = scene.extend_primitives(&v) {
-                                        errors.push(e.to_string());
-                                    }
-                                }
-                                Err(e) => errors.push(e.to_string()),
-                            }
-                        }
+        Ok(())
+    }
+    // High Complexity too... TODO
+    fn disable(&mut self, plan: &[String]) {
+        self.history_group = None;
+        self.group_recorded = false;
+        for id in plan.iter().rev() {
+            if let Some(e) = self.entries.get_mut(id) {
+                if let Some(mut r) = e.runtime.take() {
+                    if r.has("deactivate") {
+                        let _ = r.call("deactivate", vec![]);
                     }
                 }
+                e.contributions = Contributions::default();
+            }
+            if self.selected.as_ref().is_some_and(|(p, _)| p == id) {
+                self.selected = None;
+            }
+            if self.focus.as_ref() == Some(id) {
+                self.focus = None;
             }
         }
-        if let Some(error) = errors.first() {
-            self.notice = format!("Render: {error}");
-        }
-        scene
     }
 }

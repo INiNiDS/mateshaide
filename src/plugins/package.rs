@@ -1,8 +1,7 @@
-use crate::plugins::manifest::{Manifest, relative_name};
+use super::manifest::{Manifest, relative_name};
 use anyhow::{Context, Result, ensure};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::str::from_utf8;
 
 #[derive(Clone)]
 pub struct Package {
@@ -22,21 +21,17 @@ impl Package {
         );
         for (name, bytes) in &files {
             relative_name(name)?;
-            ensure!(bytes.len() <= 2 * 1024 * 1024, "file too large: {}", name);
+            ensure!(bytes.len() <= 2 * 1024 * 1024, "file too large");
         }
-        let text = from_utf8(files.get("plugin.aam").context("missing plugin.aam")?)?;
+        let text = std::str::from_utf8(files.get("plugin.aam").context("missing plugin.aam")?)?;
         let manifest = Manifest::parse(text)?;
-        ensure!(
-            files.contains_key(&manifest.entry),
-            "missing entry file: {}",
-            manifest.entry
-        );
+        ensure!(files.contains_key(&manifest.entry), "missing entry script");
         let mut hash = Sha256::new();
         for (name, bytes) in &files {
-            Digest::update(&mut hash, (name.len() as u64).to_le_bytes());
-            Digest::update(&mut hash, name.as_bytes());
-            Digest::update(&mut hash, (bytes.len() as u64).to_le_bytes());
-            Digest::update(&mut hash, bytes);
+            hash.update((name.len() as u64).to_le_bytes());
+            hash.update(name.as_bytes());
+            hash.update((bytes.len() as u64).to_le_bytes());
+            hash.update(bytes);
         }
         let fingerprint = format!("{:x}", hash.finalize());
         let icon = files.get(&manifest.icon).and_then(|bytes| {
@@ -62,12 +57,11 @@ impl Package {
             icon,
         })
     }
-
     pub fn scripts(&self) -> Result<BTreeMap<String, String>> {
         self.files
             .iter()
-            .filter(|(p, _)| p.ends_with(".rhai"))
-            .map(|(p, b)| Ok((p.clone(), from_utf8(b)?.to_string())))
+            .filter(|(p, _)| p.ends_with(".lua"))
+            .map(|(p, b)| Ok((p.clone(), std::str::from_utf8(b)?.to_owned())))
             .collect()
     }
 }
@@ -147,7 +141,7 @@ fn read_package(root: &std::path::Path) -> Result<Package> {
                     .to_str()
                     .context("invalid path")?
                     .replace('\\', "/");
-                if rel != "plugin.aam" && !rel.ends_with(".rhai") && !rel.starts_with("assets/") {
+                if rel != "plugin.aam" && !rel.ends_with(".lua") && !rel.starts_with("assets/") {
                     continue;
                 }
                 ensure!(out.len() < 256, "too many files");
@@ -157,7 +151,6 @@ fn read_package(root: &std::path::Path) -> Result<Package> {
                     size <= 2 * 1024 * 1024 && *total <= 8 * 1024 * 1024,
                     "package too large"
                 );
-                // Canonical containment is checked too; execution only uses captured bytes.
                 ensure!(
                     path.canonicalize()?.starts_with(root),
                     "file escapes package root"
@@ -192,8 +185,8 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
                     include_bytes!(concat!("../../plugins/", $dir, "/plugin.aam")).to_vec(),
                 ),
                 (
-                    "main.rhai".into(),
-                    include_bytes!(concat!("../../plugins/", $dir, "/main.rhai")).to_vec(),
+                    "main.lua".into(),
+                    include_bytes!(concat!("../../plugins/", $dir, "/main.lua")).to_vec(),
                 ),
                 (
                     "assets/icon.png".into(),
