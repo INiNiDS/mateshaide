@@ -54,6 +54,8 @@ pub struct Engine {
 
 impl Engine {
     pub async fn new(window: Arc<Window>) -> Result<Self, EngineError> {
+        #[cfg(target_arch="wasm32")]
+        crate::plugins::prepare_browser().await.map_err(|e|EngineError::Lua(e.to_string()))?;
         crate::plugins::platform::bind_window(Arc::clone(&window));
         let size = window.inner_size();
         let mut canvas = Canvas::new(size.width as f32, size.height as f32);
@@ -200,10 +202,14 @@ impl Engine {
         let camera = frame_camera(frame, w, h);
 
         let scene = self.plugin_scene(false);
-        match self
-            .renderer
-            .start_export(&camera, &scene.shapes, &scene.texts, &self.shapes, w, h)
-        {
+        match self.renderer.start_export(
+            &camera,
+            &scene.shapes,
+            &scene.texts,
+            &self.shapes,
+            w,
+            h,
+        ) {
             Ok(rb) => self.pending_png = Some(rb),
             Err(e) => tracing::error!("capture failed: {e}"),
         }
@@ -507,9 +513,7 @@ impl Engine {
             self.test_spawner.clear_selection();
         }
         let changed = self.canvas.undo();
-        if changed {
-            self.plugins.document_changed(&mut self.canvas);
-        }
+        if changed { self.plugins.document_changed(&mut self.canvas); }
         self.sync_plugin_focus();
         changed
     }
@@ -522,9 +526,7 @@ impl Engine {
             self.test_spawner.clear_selection();
         }
         let changed = self.canvas.redo();
-        if changed {
-            self.plugins.document_changed(&mut self.canvas);
-        }
+        if changed { self.plugins.document_changed(&mut self.canvas); }
         self.sync_plugin_focus();
         changed
     }
@@ -532,6 +534,8 @@ impl Engine {
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
+    #[error("Lua runtime initialization failed: {0}")]
+    Lua(String),
     #[error(transparent)]
     Shape(#[from] ShapeError),
     #[error(transparent)]

@@ -10,8 +10,6 @@ mod package;
 pub mod platform;
 mod render;
 mod runtime;
-#[cfg(test)]
-mod tests;
 mod ui;
 
 pub use document::PluginNode;

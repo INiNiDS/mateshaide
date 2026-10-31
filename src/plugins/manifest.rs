@@ -104,7 +104,7 @@ impl Manifest {
         repository(&m.repository)?;
         relative_name(&m.entry)?;
         relative_name(&m.icon)?;
-        ensure!(m.entry.ends_with(".rhai"), "entry must be a .rhai file");
+        ensure!(m.entry.ends_with(".lua"), "entry must be a .rhai file");
         let mut deps = BTreeSet::new();
         for dep in &m.dependencies {
             ensure!(valid_id(&dep.id) && dep.id != m.id && deps.insert(dep.id.clone()), "invalid or duplicate dependency");

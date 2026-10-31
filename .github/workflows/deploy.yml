@@ -33,14 +33,14 @@ jobs:
       - name: Build wasm
         run: |
           wasm-pack build --release --target web \
-            --out-dir pkg --out-name matesha_ide
+            --out-dir web/pkg --out-name matesha_ide
 
       - name: Prepare site
         run: |
           mkdir -p dist/pkg
-          cp index.html dist/index.html
-          cp pkg/matesha_ide.js dist/pkg/
-          cp pkg/matesha_ide_bg.wasm dist/pkg/
+          cp web/index.html dist/index.html
+          cp web/pkg/matesha_ide.js dist/pkg/
+          cp web/pkg/matesha_ide_bg.wasm dist/pkg/
           touch dist/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3

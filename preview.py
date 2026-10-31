@@ -43,8 +43,8 @@ def main():
     )
     parser.add_argument(
         "--out-dir",
-        default="pkg",
-        help="WASM output directory matching the import in index.html.",
+        default="web/pkg",
+        help="WASM output directory matching the import in web/index.html.",
     )
     parser.add_argument(
         "--no-open",
@@ -53,7 +53,7 @@ def main():
     )
     args = parser.parse_args()
 
-    for filename in ("Cargo.toml", "index.html"):
+    for filename in ("Cargo.toml", "web/index.html"):
         if not (ROOT / filename).is_file():
             parser.error(f"Missing {filename} next to preview.py")
 
@@ -64,7 +64,7 @@ def main():
             "Install it with: cargo install wasm-pack --locked"
         )
 
-    handler = functools.partial(PreviewHandler, directory=str(ROOT))
+    handler = functools.partial(PreviewHandler, directory=str(ROOT / "web"))
 
     try:
         server = http.server.ThreadingHTTPServer(

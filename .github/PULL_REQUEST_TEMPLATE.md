@@ -37,7 +37,7 @@ Closes #45, #46
 <!--
 Describe how you verified the change. Examples:
 - Native build: cargo run, reproduced the original behaviour and confirmed the fix
-- Browser build: wasm-pack build --release --target web --out-dir pkg --out-name matesha_ide
+- Browser build: wasm-pack build --release --target web --out-dir web/pkg --out-name matesha_ide
 - Manual test steps
 - Test plan
 -->
@@ -58,7 +58,7 @@ build, the browser build, or both.
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes
 - [ ] `cargo build` succeeds
 - [ ] The change works in the native build (`cargo run`)
-- [ ] The change works in the browser build (`wasm-pack build --release --target web --out-dir pkg --out-name matesha_ide`)
+- [ ] The change works in the browser build (`wasm-pack build --release --target web --out-dir web/pkg --out-name matesha_ide`)
 - [ ] No `dbg!`, `todo!`, or `unimplemented!` left in the code
 - [ ] Any new `unsafe` block has a `// SAFETY:` comment explaining why it is sound
 - [ ] Public items are documented with `///` doc comments
