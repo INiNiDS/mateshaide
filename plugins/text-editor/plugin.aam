@@ -1,11 +1,11 @@
 id = "org.matesha.text"
 name = "Text Editor"
 version = "1.0.0"
-description = "Basic Unicode text editing. Select Text, click the canvas and type. Supports IME, newlines, grapheme deletion and caret navigation."
-authors = ["MateshaIDE contributors"]
-repository = "https://github.com/ininids/mateshaide"  # Builtin
+description = "A Lua text editor: multiple blocks, Unicode grapheme editing, mouse selection, Shift navigation, Home/End, multiline text, IME preedit, clipboard and insert.v1 service. Editing logic is in main.lua."
+authors = ["Nikita Goncharov"]
+repository = "https://github.com/ininids/mateshaide"
 icon = "assets/icon.png"
 entry = "main.lua"
 api = "^1.0"
-permissions = ["document.write"]
+permissions = ["document.write", "clipboard.read", "clipboard.write"]
 dependencies = []

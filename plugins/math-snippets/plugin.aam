@@ -1,11 +1,11 @@
 id = "org.matesha.math-snippets"
 name = "Math Snippets"
 version = "1.0.0"
-description = "Demonstrates inter-plugin services. Select Formula and click to insert a formula through the Text Editor plugin. This is not a symbolic math engine."
+description = "Select Formula and click to insert a formula through Text Editor's public insert.v1 service. Next formula changes the sample. No imports of another plugin's files. This is not a symbolic mathematics engine."
 authors = ["Nikita Goncharov"]
-repository = "https://github.com/ininids/mateshaide"  # Builtin
+repository = "https://github.com/ininids/mateshaide"
 icon = "assets/icon.png"
-entry = "main.rhai"
+entry = "main.lua"
 api = "^1.0"
 permissions = ["plugins.call"]
 dependencies = [{ id = "org.matesha.text", version = "^1.0", repository = "https://github.com/ininids/mateshaide" }]

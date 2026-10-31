@@ -97,13 +97,13 @@ local function move_cursor(s, node, key, ctrl, shift)
 		else
 			s.caret = max(0, s.caret - 1)
 		end
-    elseif key == "ArrowRight" then
+	elseif key == "ArrowRight" then
 		if not shift and s.anchor ~= s.caret then
 			s.caret = max(s.anchor, s.caret)
 		else
 			s.caret = min(#a, s.caret + 1)
 		end
-    else
+	else
 		local l = text_layout(node.data.text, node.data.size)
 		local c = l.carets[s.caret + 1]
 
@@ -115,19 +115,19 @@ local function move_cursor(s, node, key, ctrl, shift)
 			local target = c.line + (key == "ArrowUp" and -1 or 1)
 			local best, distance = s.caret, math.huge
 
-            for i, p in ipairs(l.carets) do
+			for i, p in ipairs(l.carets) do
 				local d = abs(p.x - c.x)
 				if p.line == target and d < distance then
 					best = i - 1
 					distance = d
 				end
-            end
+			end
 
-            s.caret = best
+			s.caret = best
 		end
 	end
 
-    if not shift then
+	if not shift then
 		s.anchor = s.caret
 	end
 end
@@ -305,20 +305,22 @@ function P.handle(s, event, ctx)
 end
 
 function P.render(s, node, ctx)
-	return { { kind = "text", x = node.x, y = node.y, text = node.data.text, size = node.data.size, color = node.data.color } }
+	return {
+		{ kind = "text", x = node.x, y = node.y, text = node.data.text, size = node.data.size, color = node.data.color },
+	}
 end
 function P.overlay(s, ctx)
 	if not ctx.focused then
 		return array()
 	end
 
-    local node = find_node(ctx.nodes, s.current)
+	local node = find_node(ctx.nodes, s.current)
 
-    if not node then
+	if not node then
 		return array()
 	end
 
-    local l = text_layout(node.data.text, node.data.size)
+	local l = text_layout(node.data.text, node.data.size)
 	local caret = clamp(s.caret, #l.carets - 1)
 	local lo = clamp(min(s.anchor, s.caret), #l.carets - 1)
 	local hi = clamp(max(s.anchor, s.caret), #l.carets - 1)
@@ -342,22 +344,34 @@ function P.overlay(s, ctx)
 	end
 
 	local c = l.carets[caret + 1]
-	out[#out + 1] =
-		{ kind = "rect", x = node.x + c.x, y = node.y - c.y, width = 1.5 / ctx.zoom, height = l.line_height, color = {
+	out[#out + 1] = {
+		kind = "rect",
+		x = node.x + c.x,
+		y = node.y - c.y,
+		width = 1.5 / ctx.zoom,
+		height = l.line_height,
+		color = {
 			0.6,
 			0.8,
 			1.0,
 			1.0,
-		} }
+		},
+	}
 
 	if s.preedit ~= "" then
-		out[#out + 1] =
-			{ kind = "text", x = node.x + c.x, y = node.y - c.y, text = s.preedit, size = node.data.size, color = {
+		out[#out + 1] = {
+			kind = "text",
+			x = node.x + c.x,
+			y = node.y - c.y,
+			text = s.preedit,
+			size = node.data.size,
+			color = {
 				0.6,
 				0.8,
 				1.0,
 				1.0,
-			} }
+			},
+		}
 
 		local m = text_layout(s.preedit, node.data.size)
 		out[#out + 1] = {
@@ -368,7 +382,7 @@ function P.overlay(s, ctx)
 			y2 = node.y - c.y - l.line_height,
 			width = 1.0 / ctx.zoom,
 			color = { 0.6, 0.8, 1.0, 1.0 },
-        }
+		}
 	end
 
 	return out
