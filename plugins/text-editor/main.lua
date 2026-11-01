@@ -1,6 +1,74 @@
 local P = {}
 local min, max, abs = math.min, math.max, math.abs
 
+local COLOR_PALETTE = {
+	{
+		id = "color_red",
+		label = "Red",
+		color = { 0.85, 0.18, 0.20, 1.0 },
+	},
+	{
+		id = "color_green",
+		label = "Green",
+		color = { 0.10, 0.55, 0.30, 1.0 },
+	},
+	{
+		id = "color_blue",
+		label = "Blue",
+		color = { 0.18, 0.40, 0.88, 1.0 },
+	},
+	{
+		id = "color_black",
+		label = "Black",
+		color = { 0.12, 0.15, 0.22, 1.0 },
+	},
+}
+
+local function copy_color(color)
+	assert(type(color) == "table" and #color == 4, "Expected RGBA color")
+
+	local result = {}
+
+	for i = 1, 4 do
+		local value = color[i]
+		assert(type(value) == "number" and value >= 0 and value <= 1, "RGBA values must be between 0 and 1")
+		result[i] = value
+	end
+
+	return result
+end
+
+local function color_commands()
+	local commands = array()
+
+	for _, item in ipairs(COLOR_PALETTE) do
+		commands[#commands + 1] = {
+			id = item.id,
+			label = item.label,
+			style = {
+				background = copy_color(item.color),
+				text = { 1.0, 1.0, 1.0, 1.0 },
+			},
+		}
+	end
+
+	return commands
+end
+
+local function color_from_event(event)
+	if event.name ~= "command" then
+		return nil
+	end
+
+	for _, item in ipairs(COLOR_PALETTE) do
+		if event.id == item.id then
+			return copy_color(item.color)
+		end
+	end
+
+	return nil
+end
+
 local function clamp(i, length)
 	return max(0, min(i, length))
 end
@@ -30,7 +98,11 @@ local function new_node(s, ctx, x, y, text)
 		y = y,
 		width = 24.0,
 		height = s.size * 1.25,
-		data = { text = text, size = s.size, color = { 0.92, 0.94, 0.98, 1.0 } },
+		data = {
+			text = text,
+			size = s.size,
+			color = copy_color(s.color),
+		},
 	})
 	s.current = node.id
 	s.caret = #graphemes(text)
@@ -139,17 +211,36 @@ function P.activate(s)
 	s.dragging = false
 	s.preedit = ""
 	s.size = 26.0
+	s.color = { 0.12, 0.15, 0.22, 1.0 }
 
 	return {
 		tools = { { id = "text", label = "Text", text_input = true } },
 		object_types = { "block" },
 		services = { "insert.v1" },
-		commands = array(),
+		commands = color_commands(),
 	}
 end
 
 -- Mm, HIGH COMPLEXITY! HERE TOO... *crying emoji* TODO
 function P.handle(s, event, ctx)
+	local color = color_from_event(event)
+
+	if color then
+		s.color = color
+
+		local node = find_node(ctx.nodes, s.current)
+
+		if node and ctx.focused then
+			node.data.color = copy_color(color)
+
+			return {
+				{ kind = "node.update", node = node },
+			}
+		end
+
+		return array()
+	end
+
 	if event.name == "blur" or event.name == "tool.selected" then
 		s.preedit = ""
 		s.dragging = false
@@ -306,7 +397,14 @@ end
 
 function P.render(s, node, ctx)
 	return {
-		{ kind = "text", x = node.x, y = node.y, text = node.data.text, size = node.data.size, color = node.data.color },
+		{
+			kind = "text",
+			x = node.x,
+			y = node.y,
+			text = node.data.text,
+			size = node.data.size,
+			color = node.data.color,
+		},
 	}
 end
 function P.overlay(s, ctx)
@@ -390,8 +488,19 @@ end
 
 function P.service(s, name, args, ctx)
 	assert(name == "insert.v1", "Unknown service")
+
 	local node = new_node(s, ctx, args.x, args.y, args.text)
-	return { value = { id = node.id }, commands = { { kind = "node.create", node = node } } }
+
+	if args.color ~= nil then
+		node.data.color = copy_color(args.color)
+	end
+
+	return {
+		value = { id = node.id },
+		commands = {
+			{ kind = "node.create", node = node },
+		},
+	}
 end
 
 function P.deactivate(s) end

@@ -13,18 +13,55 @@ pub(super) const BOOTSTRAP_SOURCE: &str = include_str!("bootstrap.lua");
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ButtonStyle {
+    #[serde(default)]
+    pub background: Option<[f32; 4]>,
+
+    #[serde(default)]
+    pub text: Option<[f32; 4]>,
+
+    #[serde(default)]
+    pub selected_background: Option<[f32; 4]>,
+}
+
+impl ButtonStyle {
+    fn validate(&self) -> Result<()> {
+        for color in [self.background, self.text, self.selected_background]
+            .into_iter()
+            .flatten()
+        {
+            ensure!(
+                color
+                    .iter()
+                    .all(|value| { value.is_finite() && (0.0..=1.0).contains(value) }),
+                "button color must contain RGBA values between 0 and 1"
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Tool {
     pub id: String,
     pub label: String,
     #[serde(default)]
     pub text_input: bool,
+    #[serde(default)]
+    pub style: ButtonStyle,
 }
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Command {
     pub id: String,
     pub label: String,
+    #[serde(default)]
+    pub style: ButtonStyle,
 }
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Contributions {
@@ -45,6 +82,7 @@ pub struct Runtime {
     callbacks: BTreeSet<String>,
     pub state: Value,
 }
+
 impl Runtime {
     pub fn new(package: &Package) -> Result<Self> {
         Ok(Self {
@@ -55,9 +93,11 @@ impl Runtime {
             state: json!({}),
         })
     }
+
     pub fn has(&self, name: &str) -> bool {
         self.callbacks.contains(name)
     }
+
     pub fn call(&mut self, name: &str, args: Vec<Value>) -> Result<Value> {
         let state = serde_json::to_string(&self.state)?;
         ensure!(state.len() <= 1048576, "plugin state limit");
@@ -81,14 +121,25 @@ impl Runtime {
         self.state = next;
         Ok(out.get("result").cloned().unwrap_or(Value::Null))
     }
+
     pub fn pure_call(&mut self, name: &str, args: Vec<Value>) -> Result<Value> {
         let previous = self.state.clone();
         let out = self.call(name, args);
         self.state = previous;
         out
     }
+
+    // HIGH COMPLEXITY TODO
     pub fn activate(&mut self) -> Result<Contributions> {
         let c: Contributions = serde_json::from_value(self.call("activate", vec![])?)?;
+        for style in c
+            .tools
+            .iter()
+            .map(|tool| &tool.style)
+            .chain(c.commands.iter().map(|command| &command.style))
+        {
+            style.validate()?;
+        }
         ensure!(
             c.tools.len() <= 24
                 && c.services.len() <= 32
@@ -131,6 +182,7 @@ impl Runtime {
         Ok(c)
     }
 }
+
 pub fn json_value(value: &impl Serialize) -> Result<Value> {
     Ok(serde_json::to_value(value)?)
 }

@@ -235,4 +235,34 @@ impl UiFrame {
             }
         }
     }
+    #[allow(clippy::too_many_arguments)]
+    pub fn button_styled(
+        &mut self,
+        camera: &crate::Camera,
+        r: [f32; 4],
+        label: &str,
+        action: UiAction,
+        selected: bool,
+        style: &super::runtime::ButtonStyle,
+    ) {
+        self.button(camera, r, label, action, selected);
+
+        let background = if selected {
+            style.selected_background
+        } else {
+            style.background
+        };
+
+        if let Some([red, green, blue, alpha]) = background {
+            if let Some(shape) = self.shapes.last_mut() {
+                shape.color = Color::new(red, green, blue, alpha);
+            }
+        }
+
+        if let Some([red, green, blue, alpha]) = style.text {
+            if let Some(text) = self.texts.last_mut() {
+                text.color = Color::new(red, green, blue, alpha);
+            }
+        }
+    }
 }
