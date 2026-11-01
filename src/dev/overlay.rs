@@ -1,6 +1,6 @@
 use crate::dev::geometry::CORNERS;
 use crate::dev::{TestMode, TestSpawner, geometry};
-use crate::{palette, Canvas, CanvasText, Color, ShapeInstance, ShapeRegistry};
+use crate::{Canvas, CanvasText, Color, ShapeInstance, ShapeRegistry, palette};
 use glam::Vec2;
 
 pub(crate) const INSTANCES_CAP: usize = 32;
@@ -87,9 +87,12 @@ pub(crate) fn build_texts(canvas: &Canvas, tool: &TestSpawner) -> Vec<CanvasText
     };
 
     vec![CanvasText {
-        position: canvas.camera.screen_to_world(Vec2::new(16.0, 16.0)),
+        position: canvas.camera.screen_to_world(Vec2::new(
+            16.0,
+            (canvas.camera.screen_size.y - 64.0).max(16.0),
+        )),
         size: 14.0 / canvas.camera.zoom,
         text,
-        color: palette::GRAY_900
+        color: palette::GRAY_900,
     }]
 }

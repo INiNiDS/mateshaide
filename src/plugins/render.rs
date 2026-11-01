@@ -1,3 +1,4 @@
+use crate::plugins::UiAction;
 use crate::{CanvasText, Color, ShapeInstance};
 use anyhow::{Context, Result, bail, ensure};
 use glam::Vec2;
@@ -9,9 +10,16 @@ pub struct Scene {
     pub texts: Vec<CanvasText>,
 }
 impl Scene {
+    #[must_use]
     pub fn len(&self) -> usize {
         self.shapes.len() + self.texts.len()
     }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.shapes.is_empty() && self.texts.is_empty()
+    }
+
     pub fn extend_primitives(&mut self, value: &Value) -> Result<()> {
         let items = value.as_array().context("render must return an array")?;
         ensure!(
@@ -136,32 +144,95 @@ impl UiFrame {
             color,
         });
     }
+
     pub fn button(
         &mut self,
         camera: &crate::Camera,
         r: [f32; 4],
         label: &str,
-        action: super::ui::UiAction,
+        action: UiAction,
         selected: bool,
     ) {
-        self.rect(
-            r,
-            if selected {
-                Color::rgb(0.19, 0.36, 0.55)
-            } else {
-                Color::rgb(0.16, 0.19, 0.24)
-            },
-            camera.screen_size.x,
-            camera.screen_size.y,
-        );
+        let background = if selected {
+            Color::rgb(0.18, 0.32, 0.72)
+        } else {
+            match &action {
+                UiAction::TogglePage => Color::rgb(0.47, 0.32, 0.86),
+                UiAction::Save => Color::rgb(0.12, 0.58, 0.36),
+                UiAction::Open => Color::rgb(0.08, 0.49, 0.72),
+                UiAction::Tool(_, _) => Color::rgb(0.22, 0.46, 0.86),
+                UiAction::Command(_, _) => Color::rgb(0.82, 0.39, 0.12),
+                UiAction::TogglePlugin(_) | UiAction::Confirm => Color::rgb(0.12, 0.55, 0.38),
+                UiAction::Cancel => Color::rgb(0.48, 0.52, 0.60),
+                _ => Color::rgb(0.32, 0.43, 0.64),
+            }
+        };
+
+        self.rect(r, background, camera.screen_size.x, camera.screen_size.y);
+
+        let capacity = ((r[2] - r[0] - 16.0) / 8.0).max(1.0) as usize;
+        let label = if label.chars().count() > capacity {
+            let prefix: String = label.chars().take(capacity.saturating_sub(3)).collect();
+            format!("{prefix}...")
+        } else {
+            label.to_owned()
+        };
+
         self.text(camera, r[0] + 8.0, r[1] + 6.0, 14.0, label, Color::WHITE);
         self.hits.push((r, action));
     }
-    pub fn hit(&self, p: Vec2) -> Option<super::ui::UiAction> {
+
+    #[must_use]
+    pub fn hit(&self, p: Vec2) -> Option<UiAction> {
         self.hits
             .iter()
             .rev()
             .find(|(r, _)| p.x >= r[0] && p.y >= r[1] && p.x <= r[2] && p.y <= r[3])
             .map(|(_, a)| a.clone())
+    }
+
+    pub fn append_clipped(&mut self, layer: Self, camera: &crate::Camera, clip: [f32; 4]) {
+        let w = camera.screen_size.x;
+        let h = camera.screen_size.y;
+
+        for shape in layer.shapes {
+            let left = (shape.center[0] - shape.size[0] * 0.5 + 1.0) * w * 0.5;
+            let top = (1.0 - shape.center[1] - shape.size[1] * 0.5) * h * 0.5;
+
+            let r = [
+                left.max(clip[0]),
+                top.max(clip[1]),
+                (left + shape.size[0] * w * 0.5).min(clip[2]),
+                (top + shape.size[1] * h * 0.5).min(clip[3]),
+            ];
+
+            if r[2] > r[0] && r[3] > r[1] {
+                self.rect(r, shape.color, w, h);
+            }
+        }
+
+        for text in layer.texts {
+            let position = camera.world_to_screen(text.position);
+            let size = text.size * camera.zoom;
+            let line_height = size * 1.25;
+
+            for (index, line) in text.text.split('\n').enumerate() {
+                let y = position.y + index as f32 * line_height;
+
+                if position.x >= clip[0]
+                    && position.x < clip[2]
+                    && y >= clip[1]
+                    && y + line_height <= clip[3]
+                {
+                    self.text(camera, position.x, y, size, line, text.color);
+                }
+            }
+        }
+
+        for (r, action) in layer.hits {
+            if r[0] >= clip[0] && r[1] >= clip[1] && r[2] <= clip[2] && r[3] <= clip[3] {
+                self.hits.push((r, action));
+            }
+        }
     }
 }

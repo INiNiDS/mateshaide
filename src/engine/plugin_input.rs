@@ -56,7 +56,7 @@ impl Engine {
             }
             UiAction::SelectPlugin(id) => self.plugin_page.selected = Some(id),
             UiAction::TogglePlugin(id) => {
-                self.plugin_page.scroll = 0.0;
+                self.plugin_page.dialog_scroll = 0.0;
                 if self.plugins.active(&id) {
                     self.plugins.request_disable(&id);
                 } else {
@@ -109,7 +109,6 @@ impl Engine {
     ) -> bool {
         let ctrl = mods.control_key() || mods.super_key();
         let shift = mods.shift_key();
-        // CursorMoved carries the current position, not InputManager's previous position.
         let position = match event {
             WindowEvent::CursorMoved { position, .. } => {
                 Vec2::new(position.x as f32, position.y as f32)
@@ -117,6 +116,17 @@ impl Engine {
             _ => cursor,
         };
         self.capture_cursor = position;
+        if self.plugins.confirmation.is_some() {
+            if let WindowEvent::KeyboardInput { event, .. } = event {
+                if event.state == ElementState::Pressed
+                    && event.physical_key == PhysicalKey::Code(KeyCode::Escape)
+                {
+                    self.plugins.confirmation = None;
+                }
+
+                return true;
+            }
+        }
         if let WindowEvent::KeyboardInput { event, .. } = event {
             if event.state == ElementState::Pressed {
                 if let PhysicalKey::Code(code) = event.physical_key {
@@ -144,7 +154,6 @@ impl Engine {
                         }
                         return true;
                     }
-                    // Preserve global undo/redo, export, draw and camera shortcuts.
                     if ctrl
                         && matches!(
                             code,
@@ -181,12 +190,24 @@ impl Engine {
         }
         if self.plugin_page.open {
             if let WindowEvent::MouseWheel { delta, .. } = event {
-                let d = match delta {
+                let delta = match delta {
                     MouseScrollDelta::LineDelta(_, y) => *y * 40.0,
-                    MouseScrollDelta::PixelDelta(p) => p.y as f32,
+                    MouseScrollDelta::PixelDelta(position) => position.y as f32,
                 };
-                self.plugin_page.scroll = (self.plugin_page.scroll - d).clamp(0.0, 12000.0);
+
+                let max_scroll = self
+                    .plugins
+                    .ui_scroll_max(&self.plugin_page, &self.canvas.camera);
+
+                let scroll = if self.plugins.confirmation.is_some() {
+                    &mut self.plugin_page.dialog_scroll
+                } else {
+                    &mut self.plugin_page.scroll
+                };
+
+                *scroll = (*scroll - delta).clamp(0.0, max_scroll);
             }
+
             return true;
         }
         match event {
