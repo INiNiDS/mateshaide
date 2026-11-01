@@ -1,0 +1,4 @@
+web/vendor/** linguist-vendored
+web/vendor/** linguist-detectable=false
+
+*.wasm binary

@@ -1,0 +1,11 @@
+id = "org.matesha.shapes"
+name = "Shapes"
+version = "1.0.0"
+description = "An independent extension example. Select Shape, then drag on the canvas. Rect / Circle changes the object style. Its custom geometry objects and rendering are entirely implemented in Lua."
+authors = ["Nikita Goncharov"]
+repository = "https://github.com/ininids/mateshaide"
+icon = "assets/icon.png"
+entry = "main.lua"
+api = "^1.0"
+permissions = ["document.write"]
+dependencies = []

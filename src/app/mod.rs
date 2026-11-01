@@ -1,8 +1,10 @@
 pub mod actions;
+#[cfg(debug_assertions)]
 pub mod demo;
 pub mod events;
 pub mod lifecycle;
 
+#[cfg(debug_assertions)]
 use crate::dev::actions as dev_actions;
 use crate::engine::Engine;
 use crate::input::InputManager;
@@ -24,6 +26,7 @@ impl App {
         let mut input = InputManager::new();
 
         actions::register(&mut input);
+        #[cfg(debug_assertions)]
         dev_actions::register(&mut input);
 
         Self {

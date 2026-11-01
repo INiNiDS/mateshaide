@@ -1,4 +1,6 @@
-use super::{App, demo};
+use super::App;
+#[cfg(debug_assertions)]
+use super::demo;
 use crate::InputUpdate;
 use crate::engine::Engine;
 use glam::Vec2;
@@ -25,8 +27,13 @@ impl ApplicationHandler for App {
 
         let init = async move {
             match Engine::new(window_for_init).await {
-                Ok(mut engine) => {
-                    demo::seed_demo_shapes(&mut engine);
+                Ok(engine) => {
+                    #[cfg(debug_assertions)]
+                    let engine = {
+                        let mut engine = engine;
+                        demo::seed_demo_shapes(&mut engine);
+                        engine
+                    };
 
                     *engine_slot.borrow_mut() = Some(engine);
 
@@ -102,6 +109,14 @@ impl ApplicationHandler for App {
             return;
         }
 
+        if engine.handle_plugin_event(&event, self.input.cursor_position(), self.input.modifiers()) {
+            let update = self.input.process_event_without_actions(&event);
+            if matches!(update, InputUpdate::FocusLost) {
+                Self::handle_input_update(&self.input, engine, update, &window);
+            }
+            window.request_redraw();
+            return;
+        }
         let update = self.input.process_event(&event, engine);
 
         Self::handle_input_update(&self.input, engine, update, &window);

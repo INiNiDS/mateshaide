@@ -125,6 +125,7 @@ impl App {
         }
     }
 
+    // HIGH COMPLEXITY TODO
     fn handle_mouse_button(
         input: &InputManager,
         engine: &mut Engine,
@@ -133,6 +134,30 @@ impl App {
         window: &Window,
     ) {
         if button == MouseButton::Left {
+            #[cfg(debug_assertions)]
+            if engine.test_spawner.mode.is_some() {
+                match state {
+                    ElementState::Pressed => {
+                        engine.test_spawner.pointer_pressed(
+                            &mut engine.canvas,
+                            &engine.shapes,
+                            input.cursor_position(),
+                            input.is_shift(),
+                        );
+                    }
+                    ElementState::Released => {
+                        engine.test_spawner.pointer_moved(
+                            &mut engine.canvas,
+                            &engine.shapes,
+                            input.cursor_position(),
+                            input.is_shift(),
+                        );
+                        engine.finish_test_interaction();
+                    }
+                }
+                window.request_redraw();
+                return;
+            }
             match state {
                 ElementState::Pressed => {
                     engine
@@ -149,6 +174,8 @@ impl App {
         if button == MouseButton::Right || button == MouseButton::Middle {
             match state {
                 ElementState::Pressed => {
+                    #[cfg(debug_assertions)]
+                    engine.finish_test_interaction();
                     if !engine.canvas.is_panning() {
                         engine.canvas.start_pan();
                     }
@@ -167,6 +194,10 @@ impl App {
     }
 
     fn handle_mouse_wheel(input: &InputManager, engine: &mut Engine, delta: Vec2, window: &Window) {
+        #[cfg(debug_assertions)]
+        if engine.test_spawner.is_dragging() {
+            return;
+        }
         if input.is_ctrl() {
             engine.canvas.zoom(input.cursor_position(), delta.y);
         } else {
@@ -192,7 +223,15 @@ impl App {
         window: &Window,
         delta: Vec2,
     ) {
-        engine.test_spawner.cursor_screen = position;
+        #[cfg(debug_assertions)]
+        if engine.test_spawner.pointer_moved(
+            &mut engine.canvas,
+            &engine.shapes,
+            position,
+            input.is_shift(),
+        ) {
+            window.request_redraw();
+        }
         if engine.canvas.is_stroking() {
             engine.draw.point(&mut engine.canvas, position);
             window.request_redraw();
@@ -206,6 +245,8 @@ impl App {
     }
 
     fn handle_focus_lost(engine: &mut Engine, window: &Window) {
+        #[cfg(debug_assertions)]
+        engine.test_spawner.cancel_interaction(&mut engine.canvas);
         engine.draw.end(&mut engine.canvas);
         if engine.canvas.is_panning() {
             engine.canvas.cancel_pan();

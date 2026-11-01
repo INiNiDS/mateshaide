@@ -1,6 +1,7 @@
 use crate::canvas::Canvas;
 use crate::canvas::DrawTool;
-use crate::dev::{TestMode, TestSpawner};
+#[cfg(debug_assertions)]
+use crate::dev::TestSpawner;
 use crate::export::bounds::{Rect, content_bounds, frame_camera, item_rects};
 use crate::export::pdf::{PdfBuilder, RASTER_H, RASTER_W, page_tiles};
 use crate::export::png::{CaptureState, CapturedPng};
@@ -30,13 +31,19 @@ struct PdfJob {
     tiles: VecDeque<Rect>,
     builder: PdfBuilder,
     inflight: Option<PendingReadback>,
+    scene: crate::plugins::Scene,
 }
 
 pub struct Engine {
     pub canvas: Canvas,
     pub shapes: ShapeRegistry,
+    #[cfg(debug_assertions)]
     pub test_spawner: TestSpawner,
     pub draw: DrawTool,
+    pub(crate) plugins: crate::plugins::PluginManager,
+    pub(crate) plugin_page: crate::plugins::PluginPage,
+    pub(crate) plugin_pointer_captured: bool,
+    pub(crate) plugin_ime_composing: bool,
     pub capture_cursor: Vec2,
     renderer: Renderer,
     last_frame_time: Instant,
@@ -47,6 +54,9 @@ pub struct Engine {
 
 impl Engine {
     pub async fn new(window: Arc<Window>) -> Result<Self, EngineError> {
+        #[cfg(target_arch="wasm32")]
+        crate::plugins::prepare_browser().await.map_err(|e|EngineError::Lua(e.to_string()))?;
+        crate::plugins::platform::bind_window(Arc::clone(&window));
         let size = window.inner_size();
         let mut canvas = Canvas::new(size.width as f32, size.height as f32);
         let shapes = ShapeRegistry::with_builtins()?;
@@ -59,7 +69,12 @@ impl Engine {
             shapes,
             renderer,
             draw: DrawTool::default(),
+            plugins: crate::plugins::PluginManager::load(),
+            plugin_page: crate::plugins::PluginPage::default(),
+            plugin_pointer_captured: false,
+            plugin_ime_composing: false,
             last_frame_time: Instant::now(),
+            #[cfg(debug_assertions)]
             test_spawner: TestSpawner::default(),
             capture_cursor: Vec2::ZERO,
             capture: CaptureState::default(),
@@ -83,7 +98,8 @@ impl Engine {
     }
 
     pub fn redraw(&mut self) {
-        let swatch = if self.capture.is_idle() && self.test_spawner.mode == Some(TestMode::Spawn) {
+        #[cfg(debug_assertions)]
+        let swatch = if !self.is_capturing() {
             self.test_spawner.preview_color()
         } else {
             None
@@ -94,23 +110,46 @@ impl Engine {
             (s.width, s.height)
         };
 
+        #[cfg(debug_assertions)]
+        let dev_overlay = if self.is_capturing() {
+            Vec::new()
+        } else {
+            crate::dev::overlay::build_instances(&self.canvas, &self.shapes, &self.test_spawner)
+        };
+
         let overlay_texts = match self.capture_layout(sw, sh) {
             Some(l) => {
                 let b = capture_overlay::compute_button_rects(&l, sw, sh);
                 self.build_button_texts(&b, self.button_opacity())
             }
-            None => Vec::new(),
+            None => {
+                #[cfg(debug_assertions)]
+                let texts = if !self.is_capturing() {
+                    crate::dev::overlay::build_texts(&self.canvas, &self.test_spawner)
+                } else {
+                    Vec::new()
+                };
+                #[cfg(not(debug_assertions))]
+                let texts = Vec::new();
+                texts
+            }
         };
+        let plugin_ui = self.plugin_frame();
+        let scene = self.plugin_scene(true);
         let capture_params = Self::capture_params(&self.capture, sw, sh);
 
         self.renderer.redraw(
             &self.canvas.camera,
-            &self.canvas.instances,
-            &self.canvas.texts,
+            &scene.shapes,
+            &scene.texts,
             &self.shapes,
+            #[cfg(debug_assertions)]
             swatch,
             capture_params,
             &overlay_texts,
+            #[cfg(debug_assertions)]
+            &dev_overlay,
+            &plugin_ui,
         );
     }
 
@@ -123,7 +162,8 @@ impl Engine {
         let png = self.poll_pending_png();
         let pdf = self.poll_pdf();
         let cap = self.update_capture();
-        pan || png || pdf || cap
+        let plugins = self.poll_plugin_requests();
+        pan || png || pdf || cap || plugins
     }
 
     pub fn resize(&mut self, w: u32, h: u32) {
@@ -139,15 +179,21 @@ impl Engine {
         self.renderer.size()
     }
 
-    fn export_frame(&self) -> Option<Rect> {
-        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+    fn export_frame(&mut self) -> Option<Rect> {
+        let scene = self.plugin_scene(false);
+        let rects = item_rects(&scene.shapes, &scene.texts);
         Some(content_bounds(&rects)?.padded(export::PADDING))
     }
 
     pub fn begin_png_capture(&mut self) {
+        crate::plugins::platform::editor_focus(false, 0.0, 0.0);
         if self.pending_png.is_some() {
             return;
         }
+        #[cfg(debug_assertions)]
+        self.finish_test_interaction();
+        self.draw.end(&mut self.canvas);
+        self.canvas.cancel_pan();
         let Some(frame) = self.export_frame() else {
             tracing::warn!("canvas is empty");
             return;
@@ -155,10 +201,11 @@ impl Engine {
         let (w, h) = export::png::pixel_size(frame);
         let camera = frame_camera(frame, w, h);
 
+        let scene = self.plugin_scene(false);
         match self.renderer.start_export(
             &camera,
-            &self.canvas.instances,
-            &self.canvas.texts,
+            &scene.shapes,
+            &scene.texts,
             &self.shapes,
             w,
             h,
@@ -204,7 +251,7 @@ impl Engine {
     }
 
     pub fn is_capturing(&self) -> bool {
-        !self.capture.is_idle()
+        self.pending_png.is_some() || !self.capture.is_idle()
     }
 
     pub fn is_in_capture_preview(&self) -> bool {
@@ -374,7 +421,11 @@ impl Engine {
         if self.pdf_job.is_some() {
             return;
         }
-        let rects = item_rects(&self.canvas.instances, &self.canvas.texts);
+        #[cfg(debug_assertions)]
+        self.finish_test_interaction();
+        self.draw.end(&mut self.canvas);
+        let scene = self.plugin_scene(false);
+        let rects = item_rects(&scene.shapes, &scene.texts);
         let Some(content) = content_bounds(&rects) else {
             tracing::warn!("canvas is empty");
             return;
@@ -385,6 +436,7 @@ impl Engine {
                     tiles: tiles.into(),
                     builder: PdfBuilder::new(),
                     inflight: None,
+                    scene,
                 });
             }
             Err(e) => tracing::error!("pdf failed: {e}"),
@@ -420,8 +472,8 @@ impl Engine {
             let camera = frame_camera(tile, RASTER_W, RASTER_H);
             match self.renderer.start_export(
                 &camera,
-                &self.canvas.instances,
-                &self.canvas.texts,
+                &job.scene.shapes,
+                &job.scene.texts,
                 &self.shapes,
                 RASTER_W,
                 RASTER_H,
@@ -453,64 +505,37 @@ impl Engine {
         true
     }
 
-    pub fn toggle_test_spawn(&mut self) {
-        let was = matches!(self.test_spawner.mode, Some(TestMode::Spawn));
-        self.test_spawner.toggle_mode(TestMode::Spawn);
-        if !was
-            && self.test_spawner.current.is_none()
-            && let Some(k) = self.shapes.kind("rect")
-        {
-            self.test_spawner.select("rect", k);
-        }
-    }
-
-    pub fn select_test_shape(&mut self, name: &'static str) {
-        if !matches!(self.test_spawner.mode, Some(TestMode::Spawn)) {
-            tracing::warn!("not in spawn mode");
-            return;
-        }
-        if let Some(k) = self.shapes.kind(name) {
-            self.test_spawner.select(name, k);
-        }
-    }
-
-    pub fn spawn_test_shape(&mut self) {
-        match self.test_spawner.mode {
-            Some(TestMode::Spawn) => self.test_spawner.spawn(&mut self.canvas),
-            Some(TestMode::Erase) => {
-                self.test_spawner.erase_at_cursor(&mut self.canvas);
-            }
-            None => {}
-        }
-    }
-
-    pub fn toggle_test_color_mode(&mut self) {
-        self.test_spawner.toggle_color_mode();
-    }
-
-    pub fn next_test_picked_color(&mut self) {
-        self.test_spawner.next_picked_color();
-    }
-
-    pub fn toggle_test_eraser(&mut self) {
-        self.test_spawner.toggle_mode(TestMode::Erase);
-    }
-
-    pub fn erase_test_at_cursor(&mut self) {
-        self.test_spawner.erase_at_cursor(&mut self.canvas);
-    }
-
     pub fn undo(&mut self) -> bool {
-        self.canvas.undo()
+        self.draw.end(&mut self.canvas);
+        #[cfg(debug_assertions)]
+        {
+            self.finish_test_interaction();
+            self.test_spawner.clear_selection();
+        }
+        let changed = self.canvas.undo();
+        if changed { self.plugins.document_changed(&mut self.canvas); }
+        self.sync_plugin_focus();
+        changed
     }
 
     pub fn redo(&mut self) -> bool {
-        self.canvas.redo()
+        self.draw.end(&mut self.canvas);
+        #[cfg(debug_assertions)]
+        {
+            self.finish_test_interaction();
+            self.test_spawner.clear_selection();
+        }
+        let changed = self.canvas.redo();
+        if changed { self.plugins.document_changed(&mut self.canvas); }
+        self.sync_plugin_focus();
+        changed
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
+    #[error("Lua runtime initialization failed: {0}")]
+    Lua(String),
     #[error(transparent)]
     Shape(#[from] ShapeError),
     #[error(transparent)]

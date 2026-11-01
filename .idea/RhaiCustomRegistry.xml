@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RhaiCustomRegistrySettings">
+    <option name="customFunctions" value="graphemes&#10;join_text&#10;text_layout" />
+  </component>
+</project>

@@ -33,7 +33,12 @@ def main():
     parser.add_argument(
         "--release",
         action="store_true",
-        help="Build an optimized release version.",
+        help="Build the plain release profile instead of the profiling profile.",
+    )
+    parser.add_argument(
+        "--profile",
+        default="profiling",
+        help="Cargo profile to build with (default: profiling).",
     )
     parser.add_argument(
         "--port",
@@ -43,8 +48,8 @@ def main():
     )
     parser.add_argument(
         "--out-dir",
-        default="pkg",
-        help="WASM output directory matching the import in index.html.",
+        default="web/pkg",
+        help="WASM output directory matching the import in web/index.html.",
     )
     parser.add_argument(
         "--no-open",
@@ -53,7 +58,7 @@ def main():
     )
     args = parser.parse_args()
 
-    for filename in ("Cargo.toml", "index.html"):
+    for filename in ("Cargo.toml", "web/index.html"):
         if not (ROOT / filename).is_file():
             parser.error(f"Missing {filename} next to preview.py")
 
@@ -64,7 +69,7 @@ def main():
             "Install it with: cargo install wasm-pack --locked"
         )
 
-    handler = functools.partial(PreviewHandler, directory=str(ROOT))
+    handler = functools.partial(PreviewHandler, directory=str(ROOT / "web"))
 
     try:
         server = http.server.ThreadingHTTPServer(
@@ -85,8 +90,10 @@ def main():
             "web",
             "--out-dir",
             args.out_dir,
-            "--release" if args.release else "--dev",
+            "--release" if args.release else "--profile",
         ]
+        if not args.release:
+            command.append(args.profile)
 
         print("\nBuilding:", " ".join(command), flush=True)
 

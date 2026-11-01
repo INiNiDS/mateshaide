@@ -71,11 +71,11 @@ Build the browser version:
 
 ```bash
 wasm-pack build --release --target web \
-  --out-dir pkg --out-name matesha_ide
+  --out-dir web/pkg --out-name matesha_ide
 ```
 
-The generated `pkg/` directory is what gets published to GitHub Pages (see
-`.github/workflows/deploy.yml`).
+The generated `web/pkg/` directory is what gets published to GitHub Pages (see
+`.github/workflows/deploy.yml`). For a quick local preview use `python3 preview.py`.
 
 ---
 

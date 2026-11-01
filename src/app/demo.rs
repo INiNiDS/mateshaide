@@ -6,7 +6,7 @@ use crate::canvas::CanvasText;
 use glam::Vec2;
 
 const HELP_TEXT: &str = "\
-MateshaIDE — controls
+MateshaIDE: controls
 
 DRAWING
   Ctrl+9              toggle draw mode
@@ -28,16 +28,28 @@ CAMERA
 
 EXPORT
   Ctrl+E              export to PNG (preview)
-    S — save, C — copy, Esc — close
+    S: save, C: copy, Esc: close
   Ctrl+P              export to PDF
 
-TEST SHAPES
+DEV TOOLS (debug builds only)
   Ctrl+1              toggle shape spawn mode
-  1                   spawn shape at cursor
+  1 / LMB click       spawn at cursor with configured size
+  LMB + drag          spawn with dragged size; remember that size
+  [ / ]               decrease / increase spawn size
+  Shift + [ / ]       change spawn width
+  Alt + [ / ]         change spawn height
   Ctrl+2..5           rect / circle / hexagon / rounded_rect
   Ctrl+6              color mode: Cycle / Fixed / Picked
-  Ctrl+7              next color from palette (Picked)
-  Ctrl+8              toggle eraser mode
+  Ctrl+7              next palette color (Picked)
+  Ctrl+8              toggle eraser; LMB / 1 removes a shape
+  V / Ctrl+Shift+1    toggle selection mode
+  LMB + drag          select and move topmost shape
+  Drag corner         resize selected shape
+  Shift + resize      preserve aspect ratio
+  Delete / Backspace  delete selected shape
+  Esc                 cancel drag, otherwise deselect
+  Circles / hexagons keep their proportions.
+  Lines / custom SDF shapes can be moved, but not resized.
 ";
 
 pub(super) fn seed_demo_shapes(engine: &mut Engine) {
