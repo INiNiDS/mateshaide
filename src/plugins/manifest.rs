@@ -2,6 +2,7 @@ use aam_rs::from_aam::FromAam;
 use anyhow::{Result, bail, ensure};
 use semver::{Version, VersionReq};
 use std::collections::BTreeSet;
+use std::path::Path;
 
 pub const HOST_API: &str = "1.0.0";
 pub const PERMISSIONS: &[&str] = &[
@@ -19,6 +20,14 @@ pub struct Dependency {
     pub repository: String,
 }
 
+impl Dependency {
+    fn normalize(&mut self) {
+        document_string(&mut self.id);
+        document_string(&mut self.version);
+        document_string(&mut self.repository);
+    }
+}
+
 #[derive(Debug, Clone, aam_rs::FromAam)]
 pub struct Manifest {
     pub id: String,
@@ -32,6 +41,83 @@ pub struct Manifest {
     pub api: String,
     pub permissions: Vec<String>,
     pub dependencies: Vec<Dependency>,
+}
+
+impl Manifest {
+    fn normalize(&mut self) {
+        document_string(&mut self.id);
+        document_string(&mut self.name);
+        document_string(&mut self.version);
+        document_string(&mut self.description);
+        document_string(&mut self.repository);
+        document_string(&mut self.icon);
+        document_string(&mut self.entry);
+        document_string(&mut self.api);
+
+        for author in &mut self.authors {
+            document_string(author);
+        }
+        for perm in &mut self.permissions {
+            document_string(perm);
+        }
+        for dep in &mut self.dependencies {
+            dep.normalize();
+        }
+    }
+
+    pub fn parse(text: &str) -> Result<Self> {
+        data_only(text)?;
+
+        let mut m = Self::from_aam_str(text)
+            .map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
+
+        m.normalize();
+
+        ensure!(valid_id(&m.id) && m.id.contains('.'), "invalid plugin ID");
+        ensure!(
+            !m.name.trim().is_empty() && m.name.len() <= 128,
+            "invalid name"
+        );
+        ensure!(
+            m.description.len() <= 4096 && m.authors.len() <= 32,
+            "metadata too large"
+        );
+        Version::parse(&m.version)?;
+        VersionReq::parse(&m.api)?;
+        repository(&m.repository)?;
+        relative_name(&m.entry)?;
+        relative_name(&m.icon)?;
+        ensure!(
+            Path::new(&m.entry)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("lua")),
+            "entry must be a .lua file"
+        );
+
+        let mut deps = BTreeSet::new();
+        for dep in &m.dependencies {
+            ensure!(
+                valid_id(&dep.id) && dep.id != m.id && deps.insert(dep.id.clone()),
+                "invalid or duplicate dependency"
+            );
+            VersionReq::parse(&dep.version)?;
+            repository(&dep.repository)?;
+        }
+
+        let mut perms = BTreeSet::new();
+        for p in &m.permissions {
+            ensure!(
+                PERMISSIONS.contains(&p.as_str()) && perms.insert(p.clone()),
+                "unknown or duplicate permission: {p}"
+            );
+        }
+
+        Ok(m)
+    }
+
+    pub fn permits(&self, permission: &str) -> bool {
+        self.permissions.iter().any(|p| p == permission)
+    }
 }
 
 pub fn relative_name(name: &str) -> Result<()> {
@@ -92,48 +178,6 @@ fn data_only(text: &str) -> Result<()> {
     Ok(())
 }
 
-impl Manifest {
-    pub fn parse(text: &str) -> Result<Self> {
-        data_only(text)?;
-        let m = Self::from_aam_str(text).map_err(|e| anyhow::anyhow!("invalid manifest: {}", e))?;
-        ensure!(valid_id(&m.id) && m.id.contains('.'), "invalid plugin ID");
-        ensure!(
-            !m.name.trim().is_empty() && m.name.len() <= 128,
-            "invalid name"
-        );
-        ensure!(
-            m.description.len() <= 4096 && m.authors.len() <= 32,
-            "metadata too large"
-        );
-        Version::parse(&m.version)?;
-        VersionReq::parse(&m.api)?;
-        repository(&m.repository)?;
-        relative_name(&m.entry)?;
-        relative_name(&m.icon)?;
-        ensure!(m.entry.ends_with(".lua"), "entry must be a .lua file");
-        let mut deps = BTreeSet::new();
-        for dep in &m.dependencies {
-            ensure!(
-                valid_id(&dep.id) && dep.id != m.id && deps.insert(dep.id.clone()),
-                "invalid or duplicate dependency"
-            );
-            VersionReq::parse(&dep.version)?;
-            repository(&dep.repository)?;
-        }
-        let mut perms = BTreeSet::new();
-        for p in &m.permissions {
-            ensure!(
-                PERMISSIONS.contains(&p.as_str()) && perms.insert(p.clone()),
-                "unknown or duplicate permission: {p}"
-            );
-        }
-        Ok(m)
-    }
-    pub fn permits(&self, permission: &str) -> bool {
-        self.permissions.iter().any(|p| p == permission)
-    }
-}
-
 pub fn valid_id(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 128
@@ -147,4 +191,19 @@ fn repository(s: &str) -> Result<()> {
         "repository must be a HTTPS URL"
     );
     Ok(())
+}
+
+fn document_string(value: &mut String) {
+    let trimmed = value.trim();
+
+    for quote in ['"', '\''] {
+        if let Some(inner) = trimmed.strip_prefix(quote).and_then(|s| s.strip_suffix(quote)) {
+            *value = inner.to_owned();
+            return;
+        }
+    }
+
+    if trimmed.len() != value.len() {
+        *value = trimmed.to_owned();
+    }
 }

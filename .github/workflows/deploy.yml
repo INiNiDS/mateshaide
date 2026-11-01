@@ -32,7 +32,7 @@ jobs:
 
       - name: Build wasm
         run: |
-          wasm-pack build --release --target web \
+          wasm-pack build --profile profiling --target web \
             --out-dir web/pkg --out-name matesha_ide
 
       - name: Prepare site

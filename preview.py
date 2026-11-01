@@ -33,7 +33,12 @@ def main():
     parser.add_argument(
         "--release",
         action="store_true",
-        help="Build an optimized release version.",
+        help="Build the plain release profile instead of the profiling profile.",
+    )
+    parser.add_argument(
+        "--profile",
+        default="profiling",
+        help="Cargo profile to build with (default: profiling).",
     )
     parser.add_argument(
         "--port",
@@ -85,8 +90,10 @@ def main():
             "web",
             "--out-dir",
             args.out_dir,
-            "--release" if args.release else "--dev",
+            "--release" if args.release else "--profile",
         ]
+        if not args.release:
+            command.append(args.profile)
 
         print("\nBuilding:", " ".join(command), flush=True)
 
