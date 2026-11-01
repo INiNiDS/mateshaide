@@ -4,7 +4,7 @@ MateshaIDE is just like an IDE, but for math. If you have ever used an IDE like 
 
 ## Video-guide
 
-https://github.com/user-attachments/assets/84323845-0822-484b-a37e-0ab637b97aa0
+https://github.com/user-attachments/assets/21d6d7d6-4efe-480f-9897-c7d3fb6f3c54
 
 ## Status
 
