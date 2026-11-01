@@ -66,7 +66,10 @@ pub async fn prepare_browser() -> Result<()> {
         .map_err(|_| anyhow::anyhow!("Could not read MateshaLuaReady"))?
         .dyn_into::<js_sys::Promise>()
         .ok()
-        .context("Missing web/lua-runtime.js. Load it before the Rust/Wasm application.")?;
+        .context(
+            "Lua browser runtime is not loaded. web/index.html must include \
+             web/vendor/wasmoon.js and web/lua-runtime.js before the Rust/Wasm application.",
+        )?;
     wasm_bindgen_futures::JsFuture::from(promise)
         .await
         .map_err(|e| anyhow::anyhow!("Lua browser runtime failed to load: {e:?}"))?;

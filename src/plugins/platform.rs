@@ -602,7 +602,10 @@ pub fn browser_packages() -> Vec<BTreeMap<String, Vec<u8>>> {
         return Vec::new();
     };
 
-    let count = storage.length().unwrap_or(0).min(MAX_BROWSER_PACKAGES);
+    let count = storage
+        .length()
+        .unwrap_or(0)
+        .min(u32::try_from(MAX_BROWSER_PACKAGES).unwrap_or(u32::MAX));
 
     (0..count)
         .filter_map(|index| storage.key(index).ok().flatten())

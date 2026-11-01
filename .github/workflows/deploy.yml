@@ -37,10 +37,12 @@ jobs:
 
       - name: Prepare site
         run: |
-          mkdir -p dist/pkg
+          mkdir -p dist/pkg dist/vendor
           cp web/index.html dist/index.html
+          cp web/lua-runtime.js dist/lua-runtime.js
           cp web/pkg/matesha_ide.js dist/pkg/
           cp web/pkg/matesha_ide_bg.wasm dist/pkg/
+          cp web/vendor/wasmoon.js web/vendor/glue.wasm web/vendor/LICENSE.wasmoon dist/vendor/
           touch dist/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3

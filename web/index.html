@@ -171,6 +171,10 @@
     <div class="reason" id="fallback-reason"></div>
 </div>
 
+<!-- Classic scripts: lua-runtime.js reads document.currentScript and needs
+     window.wasmoon to exist synchronously before the Wasm module boots. -->
+<script src="./vendor/wasmoon.js"></script>
+<script src="./lua-runtime.js"></script>
 <script type="module">
     const REPO = "https://github.com/ininids/mateshaide";
     const DOWNLOAD_URL = REPO + "/releases/latest";
