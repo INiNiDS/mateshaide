@@ -79,7 +79,7 @@ impl TextLayer {
 
             let metrics = Metrics::new(t.size, t.size * 1.25);
             let mut buffer = Buffer::new(&mut self.font_system, metrics);
-            buffer.set_wrap(&mut self.font_system, glyphon::Wrap::None);
+            buffer.set_wrap(glyphon::Wrap::None);
             buffer.set_text(
                 &t.text,
                 &Attrs::new()

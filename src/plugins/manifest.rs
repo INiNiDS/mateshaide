@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
 use aam_rs::from_aam::FromAam;
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use semver::{Version, VersionReq};
+use std::collections::BTreeSet;
 
 pub const HOST_API: &str = "1.0.0";
 pub const PERMISSIONS: &[&str] = &[
@@ -97,23 +97,35 @@ impl Manifest {
         data_only(text)?;
         let m = Self::from_aam_str(text).map_err(|e| anyhow::anyhow!("invalid manifest: {}", e))?;
         ensure!(valid_id(&m.id) && m.id.contains('.'), "invalid plugin ID");
-        ensure!(!m.name.trim().is_empty() && m.name.len() <= 128, "invalid name");
-        ensure!(m.description.len() <= 4096 && m.authors.len() <= 32, "metadata too large");
+        ensure!(
+            !m.name.trim().is_empty() && m.name.len() <= 128,
+            "invalid name"
+        );
+        ensure!(
+            m.description.len() <= 4096 && m.authors.len() <= 32,
+            "metadata too large"
+        );
         Version::parse(&m.version)?;
         VersionReq::parse(&m.api)?;
         repository(&m.repository)?;
         relative_name(&m.entry)?;
         relative_name(&m.icon)?;
-        ensure!(m.entry.ends_with(".lua"), "entry must be a .rhai file");
+        ensure!(m.entry.ends_with(".lua"), "entry must be a .lua file");
         let mut deps = BTreeSet::new();
         for dep in &m.dependencies {
-            ensure!(valid_id(&dep.id) && dep.id != m.id && deps.insert(dep.id.clone()), "invalid or duplicate dependency");
+            ensure!(
+                valid_id(&dep.id) && dep.id != m.id && deps.insert(dep.id.clone()),
+                "invalid or duplicate dependency"
+            );
             VersionReq::parse(&dep.version)?;
             repository(&dep.repository)?;
         }
         let mut perms = BTreeSet::new();
         for p in &m.permissions {
-            ensure!(PERMISSIONS.contains(&p.as_str()) && perms.insert(p.clone()), "unknown or duplicate permission: {p}");
+            ensure!(
+                PERMISSIONS.contains(&p.as_str()) && perms.insert(p.clone()),
+                "unknown or duplicate permission: {p}"
+            );
         }
         Ok(m)
     }
@@ -122,12 +134,17 @@ impl Manifest {
     }
 }
 
-
 pub fn valid_id(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 128 && s.bytes().all(|c| c.is_ascii_alphanumeric() || b".-_".contains(&c))
+    !s.is_empty()
+        && s.len() <= 128
+        && s.bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b".-_".contains(&c))
 }
 
 fn repository(s: &str) -> Result<()> {
-    ensure!(s.starts_with("https://") && s.len() < 2048 && !s.chars().any(char::is_control), "repository must be a HTTPS URL");
+    ensure!(
+        s.starts_with("https://") && s.len() < 2048 && !s.chars().any(char::is_control),
+        "repository must be a HTTPS URL"
+    );
     Ok(())
 }

@@ -65,7 +65,8 @@ pub fn editor_focus(enabled: bool, x: f32, y: f32) {
 
 fn update_native_ime(enabled: bool, x: f32, y: f32) {
     WINDOW.with(|slot| {
-        let Some(window) = slot.borrow().as_ref() else {
+        let window = slot.borrow();
+        let Some(window) = window.as_ref() else {
             return;
         };
 
@@ -451,7 +452,7 @@ fn read_archive_files(
             "archive symlink forbidden"
         );
 
-        let name = entry.name().to_owned();
+        let name = entry.name()?.into_owned();
         super::manifest::relative_name(&name)?;
 
         let data = read_archive_entry(&mut entry)?;
@@ -493,7 +494,7 @@ fn read_archive_entry<R: std::io::Read + std::io::Seek>(
     Ok(data)
 }
 
-fn normalize_archive_root(mut files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> {
+fn normalize_archive_root(files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> {
     if files.contains_key("plugin.aam") {
         return files;
     }
@@ -520,7 +521,7 @@ fn retain_package_files(files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Ve
     files
         .into_iter()
         .filter(|(name, _)| {
-            name == "plugin.aam" || name.ends_with(".rhai") || name.starts_with("assets/")
+            name == "plugin.aam" || name.ends_with(".lua") || name.starts_with("assets/")
         })
         .collect()
 }
@@ -651,4 +652,51 @@ fn setup_browser() {
 })();
 "#,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn imported_package_keeps_lua_modules() {
+        let files = BTreeMap::from([
+            ("plugin.aam".to_owned(), vec![1]),
+            ("main.lua".to_owned(), vec![2]),
+            ("lib/helpers.lua".to_owned(), vec![3]),
+            ("assets/icon.png".to_owned(), vec![4]),
+            ("README.md".to_owned(), vec![5]),
+            ("legacy.rhai".to_owned(), vec![6]),
+        ]);
+        let files = retain_package_files(files);
+        assert_eq!(files.len(), 4);
+        assert!(files.contains_key("main.lua"));
+        assert!(files.contains_key("lib/helpers.lua"));
+        assert!(files.contains_key("assets/icon.png"));
+        assert!(!files.contains_key("legacy.rhai"));
+    }
+
+    #[test]
+    fn imported_package_strips_wrapper_directory() {
+        let files = BTreeMap::from([
+            ("plugin-1.0/plugin.aam".to_owned(), vec![1]),
+            ("plugin-1.0/main.lua".to_owned(), vec![2]),
+            ("plugin-1.0/lib/helpers.lua".to_owned(), vec![3]),
+            ("outside.txt".to_owned(), vec![4]),
+        ]);
+        let files = retain_package_files(normalize_archive_root(files));
+        assert_eq!(files.len(), 3);
+        assert!(files.contains_key("plugin.aam"));
+        assert!(files.contains_key("main.lua"));
+        assert!(files.contains_key("lib/helpers.lua"));
+    }
+
+    #[test]
+    fn imported_package_preserves_existing_root() {
+        let files = BTreeMap::from([
+            ("plugin.aam".to_owned(), vec![1]),
+            ("main.lua".to_owned(), vec![2]),
+        ]);
+        assert_eq!(normalize_archive_root(files.clone()), files);
+    }
 }

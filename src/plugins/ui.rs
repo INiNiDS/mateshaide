@@ -109,7 +109,7 @@ impl PluginManager {
         frame: &mut UiFrame,
         _page: &PluginPage,
         camera: &Camera,
-        [w, _h]: [f32; 2],
+        [_w, _h]: [f32; 2],
     ) {
         frame.button(
             camera,
@@ -331,7 +331,7 @@ impl PluginManager {
     fn draw_plugin_details(
         &self,
         frame: &mut UiFrame,
-        page: &PluginPage,
+        _page: &PluginPage,
         camera: &Camera,
         plugin_id: &str,
         entry: &super::manager::Entry,
@@ -374,7 +374,7 @@ impl PluginManager {
     fn draw_plugin_icon(
         &self,
         frame: &mut UiFrame,
-        camera: &Camera,
+        _camera: &Camera,
         entry: &super::manager::Entry,
         x: f32,
         w: f32,
@@ -584,13 +584,8 @@ impl PluginManager {
         y: f32,
         h: f32,
     ) {
-        let Ok(()) = self.plan(plugin_id) else {
+        let Err(error) = self.plan(plugin_id) else {
             return;
-        };
-
-        let error = match self.plan(plugin_id) {
-            Err(error) => error,
-            Ok(()) => return,
         };
 
         if y + 40.0 >= h - 68.0 {
@@ -761,5 +756,25 @@ impl PluginManager {
             UiAction::Cancel,
             false,
         );
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plan_error_is_visible_for_a_missing_plugin() {
+        let manager = PluginManager::for_tests(Vec::new(), false).unwrap();
+        let mut frame = UiFrame::default();
+        let camera = Camera::new(1280.0, 720.0);
+        manager.draw_plan_error(
+            &mut frame, &camera, "org.example.missing", 16.0, 100, 120.0, 720.0,
+        );
+        assert_eq!(frame.texts.len(), 1);
+        assert!(frame.texts[0].text.contains("Blocked:"));
+        assert!(frame.texts[0].text.contains("Plugin not installed"));
     }
 }

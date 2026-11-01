@@ -33,7 +33,13 @@ impl Package {
             hash.update((bytes.len() as u64).to_le_bytes());
             hash.update(bytes);
         }
-        let fingerprint = format!("{:x}", hash.finalize());
+        let digest = hash.finalize();
+        let mut fingerprint = String::with_capacity(digest.len() * 2);
+        for byte in digest.iter() {
+            use std::fmt::Write as _;
+            write!(&mut fingerprint, "{byte:02x}")
+                .expect("writing a digest to a String cannot fail");
+        }
         let icon = files.get(&manifest.icon).and_then(|bytes| {
             let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
                 .with_guessed_format()
