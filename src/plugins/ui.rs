@@ -2,6 +2,18 @@ use super::manager::Confirmation;
 use super::{PluginManager, UiFrame};
 use crate::{Camera, Color};
 
+const UI_MARGIN: f32 = 12.0;
+const BUTTON_HEIGHT: f32 = 30.0;
+const BUTTON_GAP: f32 = 6.0;
+const LIST_ITEM_HEIGHT: f32 = 54.0;
+const PAGE_TOP: f32 = 80.0;
+const PAGE_BOTTOM: f32 = 76.0;
+const CARD_HEIGHT: f32 = 232.0;
+const CARD_GAP: f32 = 20.0;
+const TOOLBAR_WIDTHS: [f32; 5] = [184.0, 66.0, 66.0, 100.0, 140.0];
+const TOOLBAR_HEIGHT: f32 = 32.0;
+const TOOLBAR_ROW_STEP: f32 = 40.0;
+
 #[derive(Clone)]
 pub enum UiAction {
     TogglePage,
@@ -16,6 +28,8 @@ pub enum UiAction {
     Save,
     Open,
     Import,
+    ToggleDark,
+    ToggleHalloween,
 }
 
 #[derive(Default)]
@@ -26,14 +40,46 @@ pub struct PluginPage {
     pub dialog_scroll: f32,
 }
 
-const UI_MARGIN: f32 = 12.0;
-const BUTTON_HEIGHT: f32 = 30.0;
-const BUTTON_GAP: f32 = 6.0;
-const LIST_ITEM_HEIGHT: f32 = 54.0;
-const PAGE_TOP: f32 = 80.0;
-const PAGE_BOTTOM: f32 = 76.0;
-const CARD_HEIGHT: f32 = 232.0;
-const CARD_GAP: f32 = 20.0;
+struct ToolbarCursor {
+    x: f32,
+    y: f32,
+    width: f32,
+}
+
+impl ToolbarCursor {
+    fn new(width: f32) -> Self {
+        Self {
+            x: UI_MARGIN,
+            y: UI_MARGIN,
+            width,
+        }
+    }
+
+    fn next(&mut self, width: f32) -> [f32; 4] {
+        let width = width.min((self.width - 2.0 * UI_MARGIN).max(1.0));
+
+        if self.x > UI_MARGIN && self.x + width > self.width - UI_MARGIN {
+            self.x = UI_MARGIN;
+            self.y += TOOLBAR_ROW_STEP;
+        }
+
+        let rect = [self.x, self.y, self.x + width, self.y + TOOLBAR_HEIGHT];
+
+        self.x += width + 8.0;
+        rect
+    }
+}
+
+fn toolbar_bottom(width: f32) -> f32 {
+    let mut cursor = ToolbarCursor::new(width);
+    let mut bottom = UI_MARGIN;
+
+    for button_width in TOOLBAR_WIDTHS {
+        bottom = cursor.next(button_width)[3];
+    }
+
+    bottom
+}
 
 fn dialog_rect(w: f32, h: f32) -> [f32; 4] {
     let width = (w - 32.0).clamp(1.0, 520.0);
@@ -99,13 +145,15 @@ fn confirmation_columns(left: f32, right: f32) -> usize {
 
 impl PluginManager {
     pub fn ui_frame(&self, page: &PluginPage, camera: &Camera) -> UiFrame {
-        let mut frame = UiFrame::default();
+        let mut frame = UiFrame::with_theme(self.settings.appearance.theme());
         let screen = [camera.screen_size.x, camera.screen_size.y];
 
         if !page.open {
             self.draw_toolbar(&mut frame, page, camera, screen);
             self.draw_quick_actions(&mut frame, camera, screen);
+            self.draw_halloween_decoration(&mut frame, camera, screen);
             self.draw_notice(&mut frame, camera, screen);
+
             return frame;
         }
 
@@ -123,36 +171,83 @@ impl PluginManager {
         frame: &mut UiFrame,
         _page: &PluginPage,
         camera: &Camera,
-        [_w, _h]: [f32; 2],
+        [w, _h]: [f32; 2],
     ) {
-        frame.button(
-            camera,
-            [12.0, 12.0, 196.0, 44.0],
-            "Plugins (Ctrl+Shift+P)",
-            UiAction::TogglePage,
-            false,
-        );
+        let appearance = self.settings.appearance;
 
-        frame.button(
-            camera,
-            [204.0, 12.0, 270.0, 44.0],
-            "Save",
-            UiAction::Save,
-            false,
-        );
+        let controls = [
+            ("Plugins (Ctrl+Shift+P)", UiAction::TogglePage, false),
+            ("Save", UiAction::Save, false),
+            ("Open", UiAction::Open, false),
+            (
+                if appearance.dark {
+                    "Dark: on"
+                } else {
+                    "Dark: off"
+                },
+                UiAction::ToggleDark,
+                appearance.dark,
+            ),
+            (
+                if appearance.halloween {
+                    "Halloween: on"
+                } else {
+                    "Halloween: off"
+                },
+                UiAction::ToggleHalloween,
+                appearance.halloween,
+            ),
+        ];
 
-        frame.button(
-            camera,
-            [278.0, 12.0, 344.0, 44.0],
-            "Open",
-            UiAction::Open,
-            false,
-        );
+        let mut cursor = ToolbarCursor::new(w);
+
+        for ((label, action, selected), width) in controls.into_iter().zip(TOOLBAR_WIDTHS) {
+            frame.button(camera, cursor.next(width), label, action, selected);
+        }
+    }
+
+    fn draw_halloween_decoration(&self, frame: &mut UiFrame, _camera: &Camera, [w, h]: [f32; 2]) {
+        if !frame.theme.halloween || w < 180.0 || h < 220.0 {
+            return;
+        }
+
+        const PIXELS: [&str; 10] = [
+            "......SS......",
+            ".....SS.......",
+            "...OOOOOOOO...",
+            "..OOOOOOOOOO..",
+            ".OOXXOOOOXXOO.",
+            ".OOXXOOOOXXOO.",
+            ".OOOOOXXOOOOO.",
+            "..OOXOOOOXOO..",
+            "...OOXXXXOO...",
+            "....OOOOOO....",
+        ];
+
+        let pixel_size = 3.0;
+        let left = w - UI_MARGIN - 14.0 * pixel_size;
+        let top = h - 64.0 - 10.0 * pixel_size;
+
+        for (row, line) in PIXELS.iter().enumerate() {
+            for (column, symbol) in line.bytes().enumerate() {
+                let color = match symbol {
+                    b'O' => Color::hex(0xf97316),
+                    b'S' => Color::hex(0x65a30d),
+                    b'X' => Color::hex(0x24102f),
+                    _ => continue,
+                };
+
+                let x = left + column as f32 * pixel_size;
+                let y = top + row as f32 * pixel_size;
+
+                frame.rect([x, y, x + pixel_size, y + pixel_size], color, w, h);
+            }
+        }
     }
 
     fn draw_quick_actions(&self, frame: &mut UiFrame, camera: &Camera, [w, _h]: [f32; 2]) {
         let mut x = UI_MARGIN;
-        let mut y = 52.0;
+        let mut y = toolbar_bottom(w) + 8.0;
 
         for (plugin_id, entry) in &self.entries {
             if entry.runtime.is_none() {
@@ -173,7 +268,7 @@ impl PluginManager {
                     action,
                     selected,
                     w,
-                    &tool.style
+                    &tool.style,
                 );
             }
 
@@ -189,7 +284,7 @@ impl PluginManager {
                     action,
                     false,
                     w,
-                    &command.style
+                    &command.style,
                 );
             }
         }
@@ -233,6 +328,7 @@ impl PluginManager {
         }
 
         let text = clipped(&self.notice, notice_columns(w));
+        let theme = self.settings.appearance.theme();
 
         frame.text(
             camera,
@@ -240,7 +336,7 @@ impl PluginManager {
             h - 38.0,
             12.0,
             text,
-            Color::rgb(1.0, 0.72, 0.36),
+            theme.warning,
         );
     }
 
@@ -252,7 +348,9 @@ impl PluginManager {
         camera: &Camera,
         [w, h]: [f32; 2],
     ) {
-        frame.rect([0.0, 0.0, w, h], Color::WHITE, w, h);
+        let theme = self.settings.appearance.theme();
+
+        frame.rect([0.0, 0.0, w, h], theme.panel, w, h);
 
         let width = (w - 40.0).clamp(1.0, 820.0);
         let left = (w - width) * 0.5;
@@ -260,7 +358,7 @@ impl PluginManager {
         let bottom = (h - PAGE_BOTTOM).max(PAGE_TOP);
         let scroll = page.scroll.clamp(0.0, self.ui_scroll_max(page, camera));
 
-        let mut body = UiFrame::default();
+        let mut body = UiFrame::with_theme(frame.theme);
 
         for (index, (plugin_id, entry)) in self.entries.iter().enumerate() {
             let y = PAGE_TOP + index as f32 * (CARD_HEIGHT + CARD_GAP) - scroll;
@@ -277,13 +375,13 @@ impl PluginManager {
 
             body.rect(
                 [left, y, right, y + CARD_HEIGHT],
-                Color::rgb(0.82, 0.85, 0.90),
+                theme.border,
                 w,
                 h,
             );
             body.rect(
                 [left + 1.0, y + 1.0, right - 1.0, y + CARD_HEIGHT - 1.0],
-                Color::WHITE,
+                theme.surface,
                 w,
                 h,
             );
@@ -295,7 +393,7 @@ impl PluginManager {
                     left + 20.0 + icon_size,
                     y + 24.0 + icon_size,
                 ],
-                Color::rgb(0.93, 0.95, 0.99),
+                theme.surface,
                 w,
                 h,
             );
@@ -330,7 +428,7 @@ impl PluginManager {
                 y + 18.0,
                 21.0,
                 clipped(&manifest.name, title_columns),
-                Color::rgb(0.12, 0.15, 0.22),
+                theme.text,
             );
 
             body.text(
@@ -339,7 +437,7 @@ impl PluginManager {
                 y + 48.0,
                 12.0,
                 clipped(&format!("{}  v{}", manifest.id, manifest.version), columns),
-                Color::rgb(0.43, 0.48, 0.57),
+                theme.muted,
             );
 
             let description = wrapped(&manifest.description, columns)
@@ -354,7 +452,7 @@ impl PluginManager {
                 y + 74.0,
                 14.0,
                 description,
-                Color::rgb(0.27, 0.31, 0.38),
+                theme.text,
             );
 
             body.text(
@@ -370,7 +468,7 @@ impl PluginManager {
                     ),
                     columns,
                 ),
-                Color::rgb(0.43, 0.48, 0.57),
+                theme.muted,
             );
 
             let error = if active {
@@ -382,12 +480,12 @@ impl PluginManager {
             let (status, status_color) = if let Some(error) = error {
                 (
                     clipped(&format!("Blocked: {error:#}"), columns),
-                    Color::rgb(0.75, 0.22, 0.18),
+                    theme.error,
                 )
             } else if active {
-                ("Enabled".to_owned(), Color::rgb(0.12, 0.52, 0.33))
+                ("Enabled".to_owned(), theme.success)
             } else {
-                ("Disabled".to_owned(), Color::rgb(0.43, 0.48, 0.57))
+                ("Disabled".to_owned(), theme.muted)
             };
 
             body.text(camera, x, y + 159.0, 12.0, status, status_color);
@@ -425,7 +523,7 @@ impl PluginManager {
                 PAGE_TOP + 24.0,
                 18.0,
                 "No plugins installed.",
-                Color::rgb(0.43, 0.48, 0.57),
+                theme.muted,
             );
         }
 
@@ -434,13 +532,15 @@ impl PluginManager {
     }
 
     fn draw_page_header(&self, frame: &mut UiFrame, _page: &PluginPage, camera: &Camera, w: f32) {
+        let theme = self.settings.appearance.theme();
+
         frame.text(
             camera,
             22.0,
             18.0,
             24.0,
             "Plugins",
-            Color::rgb(0.12, 0.15, 0.22),
+            theme.text,
         );
 
         frame.button(
@@ -470,15 +570,16 @@ impl PluginManager {
         }
     }
 
-
     fn draw_page_footer(&self, frame: &mut UiFrame, camera: &Camera, w: f32, h: f32) {
+        let theme = self.settings.appearance.theme();
+
         frame.text(
             camera,
             14.0,
             h - 58.0,
             12.0,
             clipped(&self.notice, notice_columns(w)),
-            Color::rgb(1.0, 0.75, 0.4),
+            theme.warning,
         );
 
         frame.text(
@@ -487,7 +588,7 @@ impl PluginManager {
             h - 30.0,
             12.0,
             "Install: clone/unpack into plugins/, then Rescan. Browser: use Import ZIP in its build.",
-            Color::rgb(0.6, 0.68, 0.78),
+            theme.muted,
         );
     }
 
@@ -501,6 +602,8 @@ impl PluginManager {
         let Some(confirm) = &self.confirmation else {
             return;
         };
+
+        let theme = self.settings.appearance.theme();
 
         frame.texts.clear();
         frame.hits.clear();
@@ -517,11 +620,11 @@ impl PluginManager {
         );
         frame.rect(
             [left - 1.0, top - 1.0, right + 1.0, bottom + 1.0],
-            Color::rgb(0.80, 0.83, 0.89),
+            theme.border,
             w,
             h,
         );
-        frame.rect([left, top, right, bottom], Color::WHITE, w, h);
+        frame.rect([left, top, right, bottom], theme.panel, w, h);
 
         let (title, label, count) = match confirm {
             Confirmation::Enable(ids) => ("Activate plugins?", "Activate", ids.len()),
@@ -534,7 +637,7 @@ impl PluginManager {
             top + 16.0,
             20.0,
             title,
-            Color::rgb(0.12, 0.15, 0.22),
+            theme.text,
         );
         frame.text(
             camera,
@@ -542,7 +645,7 @@ impl PluginManager {
             top + 43.0,
             12.0,
             format!("{count} plugin(s). Scroll inside to review."),
-            Color::rgb(0.43, 0.48, 0.57),
+            theme.muted,
         );
 
         let columns = ((right - left - 40.0) / 8.0).max(1.0) as usize;
@@ -557,7 +660,7 @@ impl PluginManager {
             top + 64.0 - scroll,
             14.0,
             self.confirmation_body(confirm, columns),
-            Color::rgb(0.27, 0.31, 0.38),
+            theme.text,
         );
 
         frame.append_clipped(

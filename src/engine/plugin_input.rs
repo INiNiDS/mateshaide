@@ -24,20 +24,37 @@ impl Engine {
     }
     pub(crate) fn plugin_scene(&mut self, overlay: bool) -> Scene {
         let show_overlay = overlay && !self.plugin_page.open && !self.is_capturing();
+
         let mut scene = self.plugins.project(
             &self.canvas.plugin_nodes,
             show_overlay,
             self.canvas.camera.zoom,
         );
+
         scene
             .shapes
             .splice(0..0, self.canvas.instances.iter().copied());
+
         scene.texts.splice(0..0, self.canvas.texts.iter().cloned());
+
+        if overlay {
+            let theme = self.plugins.settings.appearance.theme();
+
+            for shape in &mut scene.shapes {
+                shape.color = theme.display_ink(shape.color);
+            }
+
+            for text in &mut scene.texts {
+                text.color = theme.display_ink(text.color);
+            }
+        }
+
         scene
     }
+
     pub(crate) fn plugin_frame(&self) -> UiFrame {
         if self.is_capturing() {
-            UiFrame::default()
+            UiFrame::with_theme(self.plugins.settings.appearance.theme())
         } else {
             self.plugins
                 .ui_frame(&self.plugin_page, &self.canvas.camera)
@@ -88,6 +105,12 @@ impl Engine {
             },
             UiAction::Open => plugins::platform::request_open(),
             UiAction::Import => plugins::platform::request_import(),
+            UiAction::ToggleDark => {
+                self.toggle_appearance(true);
+            }
+            UiAction::ToggleHalloween => {
+                self.toggle_appearance(false);
+            }
         }
         self.sync_plugin_focus();
     }
@@ -331,5 +354,21 @@ impl Engine {
         }
         self.sync_plugin_focus();
         changed
+    }
+
+    fn toggle_appearance(&mut self, dark: bool) {
+        self.draw.end(&mut self.canvas);
+
+        let appearance = &mut self.plugins.settings.appearance;
+
+        if dark {
+            appearance.dark = !appearance.dark;
+        } else {
+            appearance.halloween = !appearance.halloween;
+        }
+
+        self.plugins.persist();
+
+        plugins::platform::sync_appearance(self.plugins.settings.appearance);
     }
 }

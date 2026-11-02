@@ -54,8 +54,10 @@ pub struct Engine {
 
 impl Engine {
     pub async fn new(window: Arc<Window>) -> Result<Self, EngineError> {
-        #[cfg(target_arch="wasm32")]
-        crate::plugins::prepare_browser().await.map_err(|e|EngineError::Lua(e.to_string()))?;
+        #[cfg(target_arch = "wasm32")]
+        crate::plugins::prepare_browser()
+            .await
+            .map_err(|e| EngineError::Lua(e.to_string()))?;
         crate::plugins::platform::bind_window(Arc::clone(&window));
         let size = window.inner_size();
         let mut canvas = Canvas::new(size.width as f32, size.height as f32);
@@ -64,12 +66,16 @@ impl Engine {
         let actual = renderer.size();
         canvas.resize(actual.width as f32, actual.height as f32);
 
+        let plugins = crate::plugins::PluginManager::load();
+
+        crate::plugins::platform::sync_appearance(plugins.settings.appearance);
+
         Ok(Self {
             canvas,
             shapes,
             renderer,
             draw: DrawTool::default(),
-            plugins: crate::plugins::PluginManager::load(),
+            plugins,
             plugin_page: crate::plugins::PluginPage::default(),
             plugin_pointer_captured: false,
             plugin_ime_composing: false,
@@ -117,7 +123,7 @@ impl Engine {
             crate::dev::overlay::build_instances(&self.canvas, &self.shapes, &self.test_spawner)
         };
 
-        let overlay_texts = match self.capture_layout(sw, sh) {
+        let mut overlay_texts = match self.capture_layout(sw, sh) {
             Some(l) => {
                 let b = capture_overlay::compute_button_rects(&l, sw, sh);
                 self.build_button_texts(&b, self.button_opacity())
@@ -134,6 +140,13 @@ impl Engine {
                 texts
             }
         };
+        if !self.is_capturing() {
+            let theme = self.plugins.settings.appearance.theme();
+
+            for text in &mut overlay_texts {
+                text.color = theme.display_ink(text.color);
+            }
+        }
         let plugin_ui = self.plugin_frame();
         let scene = self.plugin_scene(true);
         let capture_params = Self::capture_params(&self.capture, sw, sh);
@@ -202,14 +215,10 @@ impl Engine {
         let camera = frame_camera(frame, w, h);
 
         let scene = self.plugin_scene(false);
-        match self.renderer.start_export(
-            &camera,
-            &scene.shapes,
-            &scene.texts,
-            &self.shapes,
-            w,
-            h,
-        ) {
+        match self
+            .renderer
+            .start_export(&camera, &scene.shapes, &scene.texts, &self.shapes, w, h)
+        {
             Ok(rb) => self.pending_png = Some(rb),
             Err(e) => tracing::error!("capture failed: {e}"),
         }
@@ -513,7 +522,9 @@ impl Engine {
             self.test_spawner.clear_selection();
         }
         let changed = self.canvas.undo();
-        if changed { self.plugins.document_changed(&mut self.canvas); }
+        if changed {
+            self.plugins.document_changed(&mut self.canvas);
+        }
         self.sync_plugin_focus();
         changed
     }
@@ -526,7 +537,9 @@ impl Engine {
             self.test_spawner.clear_selection();
         }
         let changed = self.canvas.redo();
-        if changed { self.plugins.document_changed(&mut self.canvas); }
+        if changed {
+            self.plugins.document_changed(&mut self.canvas);
+        }
         self.sync_plugin_focus();
         changed
     }

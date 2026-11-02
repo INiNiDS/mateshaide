@@ -396,7 +396,7 @@ impl Renderer {
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Main"),
-                color_attachments: &[Some(Self::clear(&view))],
+                color_attachments: &[Some(Self::clear(&view, plugin_ui.theme.canvas))],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -651,7 +651,7 @@ impl Renderer {
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Export Pass"),
-                color_attachments: &[Some(Self::clear(&tview))],
+                color_attachments: &[Some(Self::clear(&tview, crate::theme::palette::CANVAS_BG))],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -764,18 +764,13 @@ impl Renderer {
         }
     }
 
-    fn clear(view: &wgpu::TextureView) -> RenderPassColorAttachment<'_> {
+    fn clear(view: &wgpu::TextureView, background: Color) -> RenderPassColorAttachment<'_> {
         RenderPassColorAttachment {
             view,
             depth_slice: None,
             resolve_target: None,
             ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color {
-                    r: 0.94,
-                    g: 0.945,
-                    b: 0.955,
-                    a: 1.0,
-                }),
+                load: wgpu::LoadOp::Clear(background.to_wgpu()),
                 store: wgpu::StoreOp::Store,
             },
         }

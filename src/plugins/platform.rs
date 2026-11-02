@@ -26,6 +26,24 @@ thread_local! {
     static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
 }
 
+pub fn sync_appearance(appearance: crate::theme::Appearance) {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(root) = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.document_element())
+    {
+        let _ = root.set_attribute("data-theme", if appearance.dark { "dark" } else { "light" });
+
+        let _ = root.set_attribute(
+            "data-halloween",
+            if appearance.halloween { "on" } else { "off" },
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = appearance;
+}
+
 pub fn bind_window(window: Arc<Window>) {
     #[cfg(target_arch = "wasm32")]
     let wake_window = Arc::clone(&window);

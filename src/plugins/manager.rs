@@ -15,6 +15,9 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct Settings {
     pub approved: BTreeMap<String, String>,
     pub enabled: BTreeSet<String>,
+
+    #[serde(default)]
+    pub appearance: crate::theme::Appearance,
 }
 pub struct Entry {
     pub package: Package,

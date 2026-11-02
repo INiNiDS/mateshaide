@@ -113,11 +113,21 @@ fn color(v: Option<&Value>) -> Result<Color> {
 
 #[derive(Default)]
 pub struct UiFrame {
+    pub theme: crate::theme::Theme,
     pub shapes: Vec<ShapeInstance>,
     pub texts: Vec<CanvasText>,
-    pub hits: Vec<([f32; 4], super::ui::UiAction)>,
+    pub hits: Vec<([f32; 4], UiAction)>,
 }
+
 impl UiFrame {
+    #[must_use]
+    pub fn with_theme(theme: crate::theme::Theme) -> Self {
+        Self {
+            theme,
+            ..Self::default()
+        }
+    }
+
     pub fn rect(&mut self, screen: [f32; 4], color: Color, w: f32, h: f32) {
         let [x, y, r, b] = screen;
         self.shapes.push(ShapeInstance::rect(
@@ -154,31 +164,47 @@ impl UiFrame {
         selected: bool,
     ) {
         let background = if selected {
-            Color::rgb(0.18, 0.32, 0.72)
+            self.theme.accent
+        } else if self.theme.halloween {
+            self.theme.secondary
         } else {
             match &action {
-                UiAction::TogglePage => Color::rgb(0.47, 0.32, 0.86),
-                UiAction::Save => Color::rgb(0.12, 0.58, 0.36),
-                UiAction::Open => Color::rgb(0.08, 0.49, 0.72),
-                UiAction::Tool(_, _) => Color::rgb(0.22, 0.46, 0.86),
-                UiAction::Command(_, _) => Color::rgb(0.82, 0.39, 0.12),
-                UiAction::TogglePlugin(_) | UiAction::Confirm => Color::rgb(0.12, 0.55, 0.38),
-                UiAction::Cancel => Color::rgb(0.48, 0.52, 0.60),
-                _ => Color::rgb(0.32, 0.43, 0.64),
+                UiAction::TogglePage | UiAction::ToggleDark | UiAction::ToggleHalloween => {
+                    self.theme.accent
+                }
+
+                UiAction::Save => Color::hex(0x167047),
+                UiAction::Open => Color::hex(0x116a91),
+                UiAction::Tool(_, _) => Color::hex(0x2d59a5),
+                UiAction::Command(_, _) => Color::hex(0xa34c16),
+
+                UiAction::TogglePlugin(_) | UiAction::Confirm => Color::hex(0x167047),
+
+                _ => self.theme.secondary,
             }
         };
 
         self.rect(r, background, camera.screen_size.x, camera.screen_size.y);
 
         let capacity = ((r[2] - r[0] - 16.0) / 8.0).max(1.0) as usize;
+
         let label = if label.chars().count() > capacity {
             let prefix: String = label.chars().take(capacity.saturating_sub(3)).collect();
+
             format!("{prefix}...")
         } else {
             label.to_owned()
         };
 
-        self.text(camera, r[0] + 8.0, r[1] + 6.0, 14.0, label, Color::WHITE);
+        self.text(
+            camera,
+            r[0] + 8.0,
+            r[1] + 6.0,
+            14.0,
+            label,
+            self.theme.button_text,
+        );
+
         self.hits.push((r, action));
     }
 

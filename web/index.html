@@ -4,6 +4,22 @@
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
     <title>MateshaIDE</title>
+    <script>
+        try {
+            const settings = JSON.parse(
+                localStorage.getItem("matesha.plugins.v1") || "{}"
+            );
+
+            const appearance = settings.appearance || {};
+
+            document.documentElement.dataset.theme =
+                appearance.dark === true ? "dark" : "light";
+
+            document.documentElement.dataset.halloween =
+                appearance.halloween === true ? "on" : "off";
+        } catch (_) {
+        }
+    </script>
     <style>
         html, body {
             margin: 0;
@@ -130,6 +146,63 @@
             font-family: ui-monospace, Menlo, monospace;
             word-break: break-word;
             max-width: 580px;
+        }
+
+        :root {
+            color-scheme: light;
+
+            --theme-canvas: #f0f1f4;
+            --theme-panel: #ffffff;
+            --theme-text: #111827;
+            --theme-muted: #4b5563;
+            --theme-border: #c5cbd5;
+            --theme-accent: #6250ac;
+        }
+
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+
+            --theme-canvas: #0b0e14;
+            --theme-panel: #111827;
+            --theme-text: #f3f4f6;
+            --theme-muted: #b4bdcb;
+            --theme-border: #4b5563;
+            --theme-accent: #6366b9;
+        }
+
+        :root[data-halloween="on"] {
+            --theme-canvas: #fff4e5;
+            --theme-accent: #b45309;
+        }
+
+        :root[data-theme="dark"][data-halloween="on"] {
+            --theme-canvas: #100c18;
+            --theme-panel: #1b1325;
+            --theme-border: #79518d;
+        }
+
+        html,
+        body {
+            background: var(--theme-canvas);
+            color: var(--theme-text);
+        }
+
+        #fallback h1 {
+            color: var(--theme-text);
+        }
+
+        #fallback p {
+            color: var(--theme-muted);
+        }
+
+        #fallback .secondary {
+            background: var(--theme-panel);
+            color: var(--theme-text);
+            border-color: var(--theme-border);
+        }
+
+        #fallback .primary {
+            background: var(--theme-accent);
         }
     </style>
 </head>
