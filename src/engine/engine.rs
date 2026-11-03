@@ -8,6 +8,7 @@ use crate::export::png::{CaptureState, CapturedPng};
 use crate::graphics::capture_overlay::{
     self, ButtonAction, ButtonRect, CaptureOverlayParams, CardAnim, CardLayout, REST_ANGLE,
 };
+use crate::graphics::renderer::FrameInput;
 use crate::graphics::{PendingReadback, Renderer, RendererError};
 use crate::shape::{ShapeError, ShapeRegistry};
 use crate::{CanvasText, Color, export};
@@ -27,7 +28,6 @@ const DEVELOP_SECS: f32 = 2.4;
 const BUTTONS_DELAY: f32 = 0.7;
 const BUTTONS_FADE: f32 = 0.25;
 
-const BUTTON_FONT_SIZE: f32 = 15.0;
 const BUTTON_CHAR_WIDTH_RATIO: f32 = 0.32;
 const BUTTON_BASELINE_SHIFT: f32 = 0.55;
 const BUTTON_MIN_OPACITY: f32 = 0.01;
@@ -153,19 +153,21 @@ impl Engine {
         let scene = self.plugin_scene(true);
         let capture_params = Self::capture_params(&self.capture, sw, sh);
 
-        self.renderer.redraw(
-            &self.canvas.camera,
-            &scene.shapes,
-            &scene.texts,
-            &self.shapes,
+        self.renderer.redraw(FrameInput {
+            camera: &self.canvas.camera,
+            instances: &scene.shapes,
+            texts: &scene.texts,
+            shapes: &self.shapes,
+            capture: capture_params,
+            overlay_texts: &overlay_texts,
+            plugin_ui: &plugin_ui,
+
             #[cfg(debug_assertions)]
             swatch,
-            capture_params,
-            &overlay_texts,
+
             #[cfg(debug_assertions)]
-            &dev_overlay,
-            &plugin_ui,
-        );
+            dev_overlay: &dev_overlay,
+        });
     }
 
     pub fn update(&mut self) -> bool {
@@ -349,7 +351,7 @@ impl Engine {
     fn button_opacity(&self) -> f32 {
         match &self.capture {
             CaptureState::Preview { shown_at, .. } => {
-                Self::buttons_opacity_at((Instant::now() - *shown_at).as_secs_f32())
+                Self::buttons_opacity_at((*shown_at).elapsed().as_secs_f32())
             }
             _ => 0.0,
         }
