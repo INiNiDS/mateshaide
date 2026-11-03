@@ -72,22 +72,26 @@ impl Appearance {
                 halloween: self.halloween,
             }
         };
+
         if self.halloween {
-            theme.accent = Color::hex(0xb45309);
-            theme.secondary = Color::hex(0x6b3fa0);
+            theme.accent = Color::hex(0xb45316);
+            theme.secondary = Color::hex(0x68458a);
 
             if self.dark {
-                theme.canvas = Color::hex(0x100c18);
-                theme.panel = Color::hex(0x1b1325);
-                theme.surface = Color::hex(0x2c1c38);
-                theme.border = Color::hex(0x79518d);
+                theme.canvas = Color::hex(0x100e17);
+                theme.panel = Color::hex(0x1b1724);
+                theme.surface = Color::hex(0x262030);
+                theme.border = Color::hex(0x655178);
+                theme.text = Color::hex(0xeee8f5);
+                theme.muted = Color::hex(0xb5a9c2);
             } else {
-                theme.canvas = Color::hex(0xfff4e5);
-                theme.panel = Color::hex(0xfffbf5);
-                theme.surface = Color::hex(0xf3e8ff);
-                theme.border = Color::hex(0xc4a4d4);
+                theme.canvas = Color::hex(0xf7f0e5);
+                theme.panel = Color::hex(0xfffaf2);
+                theme.surface = Color::hex(0xeee4d9);
+                theme.border = Color::hex(0x9b829f);
             }
         }
+
         theme
     }
 }

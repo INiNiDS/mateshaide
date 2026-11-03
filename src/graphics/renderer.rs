@@ -412,12 +412,23 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+
+            let background_count = plugin_ui.background_shape_count.min(plugin_ui.shapes.len());
+
+            self.render_pipeline.draw_range(
+                &mut pass,
+                &self.overlay_bind_group,
+                &self.plugin_buffer,
+                0..background_count as u32,
+            );
+
             self.render_pipeline.draw(
                 &mut pass,
                 &self.camera_bind_group,
                 &self.instance_buffer,
                 instances.len() as u32,
             );
+
             self.text.render(&mut pass);
         }
 
@@ -569,8 +580,9 @@ impl Renderer {
                 multiview_mask: None,
             });
 
-            let mut shape_start = 0usize;
             let shape_count = plugin_ui.shapes.len();
+
+            let mut shape_start = plugin_ui.background_shape_count.min(shape_count);
 
             for (index, image) in plugin_ui.images.iter().enumerate() {
                 let split = image.after_shapes.min(shape_count).max(shape_start);

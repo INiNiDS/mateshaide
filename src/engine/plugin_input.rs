@@ -15,13 +15,17 @@ impl Engine {
         self.plugins.selected = None;
         self.plugin_pointer_captured = false;
         self.plugin_ime_composing = false;
+
         plugins::platform::editor_focus(false, 0.0, 0.0);
     }
+
     pub fn sync_plugin_focus(&self) {
         let enabled =
             !self.plugin_page.open && !self.is_capturing() && self.plugins.wants_text_input();
+
         plugins::platform::editor_focus(enabled, self.capture_cursor.x, self.capture_cursor.y);
     }
+
     pub(crate) fn plugin_scene(&mut self, overlay: bool) -> Scene {
         let show_overlay = overlay && !self.plugin_page.open && !self.is_capturing();
 
@@ -60,69 +64,117 @@ impl Engine {
                 .ui_frame(&self.plugin_page, &self.canvas.camera)
         }
     }
+
     fn plugin_action(&mut self, action: UiAction) {
         match action {
             UiAction::TogglePage => {
                 self.plugins.blur(&mut self.canvas);
                 self.draw.end(&mut self.canvas);
                 self.canvas.cancel_pan();
+
                 self.plugin_pointer_captured = false;
                 self.plugin_page.open = !self.plugin_page.open;
                 self.plugins.confirmation = None;
                 self.plugin_page.scroll = 0.0;
             }
-            UiAction::SelectPlugin(id) => self.plugin_page.selected = Some(id),
+
+            UiAction::SelectPlugin(id) => {
+                self.plugin_page.selected = Some(id);
+            }
+
             UiAction::TogglePlugin(id) => {
                 self.plugin_page.dialog_scroll = 0.0;
+
                 if self.plugins.active(&id) {
                     self.plugins.request_disable(&id);
                 } else {
                     self.plugins.request_enable(&id);
                 }
             }
-            UiAction::Confirm => self.plugins.confirm(),
-            UiAction::Cancel => self.plugins.confirmation = None,
+
+            UiAction::Confirm => {
+                self.plugins.confirm();
+            }
+
+            UiAction::Cancel => {
+                self.plugins.confirmation = None;
+            }
+
             UiAction::Rescan => {
                 self.clear_plugin_tool();
                 self.plugins.rescan();
             }
-            UiAction::Repository(url) => plugins::platform::open_repository(&url),
-            UiAction::Tool(p, t) => {
+
+            UiAction::Repository(url) => {
+                plugins::platform::open_repository(&url);
+            }
+
+            UiAction::Tool(plugin_id, tool_id) => {
                 self.draw.end(&mut self.canvas);
                 self.draw.enabled = false;
+
                 #[cfg(debug_assertions)]
                 self.disable_test_tools();
+
                 self.plugin_pointer_captured = false;
-                self.plugins.select_tool(&p, &t, &mut self.canvas);
-            }
-            UiAction::Command(p, c) => {
+
                 self.plugins
-                    .dispatch(&p, json!({"name":"command","id":c}), &mut self.canvas)
+                    .select_tool(&plugin_id, &tool_id, &mut self.canvas);
             }
+
+            UiAction::Command(plugin_id, command_id) => {
+                self.plugins.dispatch(
+                    &plugin_id,
+                    json!({
+                        "name": "command",
+                        "id": command_id
+                    }),
+                    &mut self.canvas,
+                );
+            }
+
             UiAction::Save => match self.canvas.document_bytes() {
-                Ok(b) => plugins::platform::save_document(&b),
-                Err(e) => self.plugins.notice = e.to_string(),
+                Ok(bytes) => {
+                    plugins::platform::save_document(&bytes);
+                }
+                Err(error) => {
+                    self.plugins.notice = error.to_string();
+                }
             },
-            UiAction::Open => plugins::platform::request_open(),
-            UiAction::Import => plugins::platform::request_import(),
+
+            UiAction::Open => {
+                plugins::platform::request_open();
+            }
+
+            UiAction::Import => {
+                plugins::platform::request_import();
+            }
+
             UiAction::ToggleDark => {
                 self.toggle_appearance(true);
             }
+
             UiAction::ToggleHalloween => {
                 self.toggle_appearance(false);
             }
         }
+
         self.sync_plugin_focus();
     }
+
     fn send_plugin_event(&mut self, event: Value) -> bool {
-        if let Some((id, _)) = self.plugins.selected.clone() {
-            self.plugins.dispatch(&id, event, &mut self.canvas);
+        if let Some((plugin_id, _)) = self.plugins.selected.clone() {
+            self.plugins.dispatch(&plugin_id, event, &mut self.canvas);
+
             self.sync_plugin_focus();
+
             true
         } else {
             false
         }
     }
+
+
     // TODO
     pub(crate) fn handle_plugin_event(
         &mut self,
@@ -132,13 +184,16 @@ impl Engine {
     ) -> bool {
         let ctrl = mods.control_key() || mods.super_key();
         let shift = mods.shift_key();
+
         let position = match event {
             WindowEvent::CursorMoved { position, .. } => {
                 Vec2::new(position.x as f32, position.y as f32)
             }
             _ => cursor,
         };
+
         self.capture_cursor = position;
+
         if self.plugins.confirmation.is_some() {
             if let WindowEvent::KeyboardInput { event, .. } = event {
                 if event.state == ElementState::Pressed
@@ -150,6 +205,7 @@ impl Engine {
                 return true;
             }
         }
+
         if let WindowEvent::KeyboardInput { event, .. } = event {
             if event.state == ElementState::Pressed {
                 if let PhysicalKey::Code(code) = event.physical_key {
@@ -157,26 +213,32 @@ impl Engine {
                         self.plugin_action(UiAction::TogglePage);
                         return true;
                     }
+
                     if code == KeyCode::KeyS && ctrl {
                         self.plugin_action(UiAction::Save);
                         return true;
                     }
+
                     if code == KeyCode::KeyO && ctrl {
                         self.plugin_action(UiAction::Open);
                         return true;
                     }
+
                     if code == KeyCode::F5 && self.plugin_page.open {
                         self.plugin_action(UiAction::Rescan);
                         return true;
                     }
+
                     if code == KeyCode::Escape && self.plugin_page.open {
                         if self.plugins.confirmation.is_some() {
                             self.plugins.confirmation = None;
                         } else {
                             self.plugin_action(UiAction::TogglePage);
                         }
+
                         return true;
                     }
+
                     if ctrl
                         && matches!(
                             code,
@@ -194,23 +256,69 @@ impl Engine {
                     {
                         return self.plugin_page.open;
                     }
+
                     if ctrl && code == KeyCode::KeyX && !self.plugins.wants_text_input() {
                         return self.plugin_page.open;
                     }
                 }
             }
         }
+
         if let WindowEvent::MouseInput {
             button: MouseButton::Left,
             state: ElementState::Pressed,
             ..
         } = event
         {
-            if let Some(action) = self.plugin_frame().hit(position) {
+            let frame = self.plugin_frame();
+
+            if let Some(action) = frame.hit(position) {
                 self.plugin_action(action);
                 return true;
             }
+
+            if frame.blocks_pointer(position) {
+                return true;
+            }
         }
+
+        if !self.plugin_page.open && !self.plugin_pointer_captured {
+            if let WindowEvent::MouseWheel { delta, .. } = event {
+                if self
+                    .plugins
+                    .quick_contains(&self.plugin_page, &self.canvas.camera, position)
+                {
+                    let delta = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => *y * 40.0,
+                        MouseScrollDelta::PixelDelta(position) => position.y as f32,
+                    };
+
+                    let max_scroll = self.plugins.quick_scroll_max(&self.canvas.camera);
+
+                    self.plugin_page.quick_scroll =
+                        (self.plugin_page.quick_scroll - delta).clamp(0.0, max_scroll);
+
+                    return true;
+                }
+
+                if self.plugin_frame().blocks_pointer(position) {
+                    return true;
+                }
+            }
+
+            if matches!(
+                event,
+                WindowEvent::MouseInput {
+                    button: MouseButton::Right | MouseButton::Middle,
+                    state: ElementState::Pressed,
+                    ..
+                }
+            ) && self.plugin_frame().blocks_pointer(position)
+            {
+                return true;
+            }
+        }
+
         if self.plugin_page.open {
             if let WindowEvent::MouseWheel { delta, .. } = event {
                 let delta = match delta {
@@ -233,126 +341,202 @@ impl Engine {
 
             return true;
         }
+
         match event {
             WindowEvent::Focused(false) => {
                 self.plugins.blur(&mut self.canvas);
+
                 self.plugin_pointer_captured = false;
                 self.plugin_ime_composing = false;
+
                 self.sync_plugin_focus();
+
                 false
             }
+
             WindowEvent::Ime(Ime::Enabled) => false,
+
             WindowEvent::Ime(Ime::Preedit(text, _)) => {
                 self.plugin_ime_composing = !text.is_empty();
-                self.send_plugin_event(json!({"name":"ime.preedit","text":text}))
+
+                self.send_plugin_event(json!({
+                    "name": "ime.preedit",
+                    "text": text
+                }))
             }
+
             WindowEvent::Ime(Ime::Commit(text)) => {
                 self.plugin_ime_composing = false;
-                self.send_plugin_event(json!({"name":"text","text":text}))
+
+                self.send_plugin_event(json!({
+                    "name": "text",
+                    "text": text
+                }))
             }
+
             WindowEvent::Ime(Ime::Disabled) => {
                 self.plugin_ime_composing = false;
-                self.send_plugin_event(json!({"name":"ime.preedit","text":""}))
+
+                self.send_plugin_event(json!({
+                    "name": "ime.preedit",
+                    "text": ""
+                }))
             }
+
             WindowEvent::MouseInput {
                 button: MouseButton::Left,
                 state,
                 ..
-            } if self.plugins.selected.is_some() => {
+            } if self.plugins.selected.is_some()
+                && (*state == ElementState::Pressed || self.plugin_pointer_captured) =>
+            {
                 let phase = if *state == ElementState::Pressed {
                     "down"
                 } else {
                     "up"
                 };
+
                 self.plugin_pointer_captured = *state == ElementState::Pressed;
+
                 let world = self.canvas.camera.screen_to_world(position);
-                self.send_plugin_event(json!({"name":"pointer","phase":phase,"x":world.x,"y":world.y,"shift":shift,"ctrl":ctrl}))
+
+                self.send_plugin_event(json!({
+                    "name": "pointer",
+                    "phase": phase,
+                    "x": world.x,
+                    "y": world.y,
+                    "shift": shift,
+                    "ctrl": ctrl
+                }))
             }
+
             WindowEvent::CursorMoved { .. } if self.plugin_pointer_captured => {
                 let world = self.canvas.camera.screen_to_world(position);
-                self.send_plugin_event(json!({"name":"pointer","phase":"move","x":world.x,"y":world.y,"shift":shift,"ctrl":ctrl}))
+
+                self.send_plugin_event(json!({
+                    "name": "pointer",
+                    "phase": "move",
+                    "x": world.x,
+                    "y": world.y,
+                    "shift": shift,
+                    "ctrl": ctrl
+                }))
             }
+
             WindowEvent::KeyboardInput { event, .. }
                 if self.plugins.selected.is_some() && event.state == ElementState::Pressed =>
             {
                 if self.plugin_ime_composing {
                     return true;
                 }
+
                 let key = match &event.logical_key {
-                    Key::Named(k) => format!("{k:?}"),
-                    Key::Character(c) => c.to_lowercase(),
+                    Key::Named(key) => {
+                        format!("{key:?}")
+                    }
+                    Key::Character(character) => character.to_lowercase(),
                     _ => String::new(),
                 };
-                let handled = self.send_plugin_event(
-                    json!({"name":"key","key":key,"ctrl":ctrl,"shift":shift,"alt":mods.alt_key()}),
-                );
+
+                let handled = self.send_plugin_event(json!({
+                    "name": "key",
+                    "key": key,
+                    "ctrl": ctrl,
+                    "shift": shift,
+                    "alt": mods.alt_key()
+                }));
+
                 if !ctrl && !mods.alt_key() {
                     if let Some(text) = &event.text {
                         if !text.is_empty() && text.chars().all(|c| !c.is_control()) {
-                            self.send_plugin_event(json!({"name":"text","text":text.as_str()}));
+                            self.send_plugin_event(json!({
+                                "name": "text",
+                                "text": text.as_str()
+                            }));
                         }
                     }
                 }
+
                 handled
             }
+
             _ => false,
         }
     }
-    // TODO
+
     pub(crate) fn poll_plugin_requests(&mut self) -> bool {
         let requests = plugins::platform::drain();
         let changed = !requests.is_empty();
-        for req in requests {
-            match req {
+
+        for request in requests {
+            match request {
                 plugins::platform::Request::Document(bytes) => {
                     self.clear_plugin_tool();
+
                     match self.canvas.load_document_bytes(&bytes) {
                         Ok(()) => {
                             self.plugins.document_changed(&mut self.canvas);
+
                             self.plugins.notice = "Document opened".into();
                         }
-                        Err(e) => self.plugins.notice = format!("Could not open document: {e:#}"),
+
+                        Err(error) => {
+                            self.plugins.notice = format!("Could not open document: {error:#}");
+                        }
                     }
                 }
+
                 plugins::platform::Request::Package(bytes) => {
                     match plugins::platform::install_zip(&bytes) {
                         Ok(id) => {
                             self.clear_plugin_tool();
                             self.plugins.rescan();
+
                             self.plugin_page.open = true;
                             self.plugin_page.selected = Some(id);
+
                             self.plugins.notice =
                                 "Installed, not activated. Review permissions and activate.".into();
                         }
-                        Err(e) => self.plugins.notice = format!("Import failed: {e:#}"),
+
+                        Err(error) => {
+                            self.plugins.notice = format!("Import failed: {error:#}");
+                        }
                     }
                 }
-                plugins::platform::Request::Error(e) => self.plugins.notice = e,
-                plugins::platform::Request::Event(e) => {
+
+                plugins::platform::Request::Error(error) => {
+                    self.plugins.notice = error;
+                }
+
+                plugins::platform::Request::Event(event) => {
                     if !self.plugin_page.open && !self.is_capturing() {
-                        let global = e["name"] == "key" && e["ctrl"] == true;
-                        if global && e["key"] == "z" {
-                            if e["shift"] == true {
+                        let global = event["name"] == "key" && event["ctrl"] == true;
+
+                        if global && event["key"] == "z" {
+                            if event["shift"] == true {
                                 self.redo();
                             } else {
                                 self.undo();
                             }
-                        } else if global && e["key"] == "y" {
+                        } else if global && event["key"] == "y" {
                             self.redo();
-                        } else if global && e["key"] == "s" {
+                        } else if global && event["key"] == "s" {
                             self.plugin_action(UiAction::Save);
-                        } else if global && e["key"] == "o" {
+                        } else if global && event["key"] == "o" {
                             self.plugin_action(UiAction::Open);
-                        } else if global && e["key"] == "p" && e["shift"] == true {
+                        } else if global && event["key"] == "p" && event["shift"] == true {
                             self.plugin_action(UiAction::TogglePage);
                         } else {
-                            self.send_plugin_event(e);
+                            self.send_plugin_event(event);
                         }
                     }
                 }
             }
         }
+
         self.sync_plugin_focus();
+
         changed
     }
 
