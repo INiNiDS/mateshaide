@@ -5,7 +5,7 @@ use crate::input::shortcut::{InputTrigger, Shortcut};
 use crate::input::update::InputUpdate;
 use glam::Vec2;
 use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 
 const TOUCHPAD_SCROLL_SCALE: f32 = 0.05;
@@ -13,7 +13,6 @@ const TOUCHPAD_SCROLL_SCALE: f32 = 0.05;
 pub struct InputManager<Ctx = Engine> {
     actions: FastHashMap<ActionID, ActionCallback<Ctx>>,
     bindings: FastHashMap<Shortcut, ActionID>,
-
     key_down: FastHashSet<KeyCode>,
     mouse_buttons_down: FastHashSet<MouseButton>,
     cursor_pos: Vec2,
@@ -57,6 +56,7 @@ impl<Ctx> InputManager<Ctx> {
 
     pub fn remove_action<I: Into<ActionID>>(&mut self, action_id: I) {
         let action_id = action_id.into();
+
         self.actions.remove(&action_id);
         self.bindings.retain(|_, v| v != &action_id);
     }
@@ -64,8 +64,10 @@ impl<Ctx> InputManager<Ctx> {
     /// Dispatches an action right now by its ID, invoking the associated callback if it exists, or returns false.
     pub fn dispatch<I: Into<ActionID>>(&mut self, action_id: I, ctx: &mut Ctx) -> bool {
         let action_id = action_id.into();
+
         if let Some(callback) = self.actions.get_mut(&action_id) {
             callback(ctx);
+
             true
         } else {
             false
@@ -115,98 +117,99 @@ impl<Ctx> InputManager<Ctx> {
             shift: self.is_shift(),
             alt: self.is_alt(),
         };
+
         self.bindings.get(&shortcut).cloned()
     }
 
     pub fn process_event(&mut self, event: &WindowEvent, ctx: &mut Ctx) -> InputUpdate {
+        if let Some(trigger) = self.track_state(event) {
+            if self.try_trigger(trigger, ctx) {
+                return InputUpdate::ActionExecuted;
+            }
+        }
+
         match event {
-            WindowEvent::ModifiersChanged(modifiers) => {
-                self.modifiers = modifiers.state();
-                InputUpdate::None
-            }
-            WindowEvent::Focused(false) => {
-                self.key_down.clear();
-                self.mouse_buttons_down.clear();
-                self.modifiers = ModifiersState::default();
-                InputUpdate::FocusLost
-            }
-            WindowEvent::KeyboardInput { event, .. } => self.handle_keyboard(event, ctx),
+            WindowEvent::Focused(false) => InputUpdate::FocusLost,
+            WindowEvent::MouseInput { button, state, .. } => InputUpdate::MouseButton {
+                button: *button,
+                state: *state,
+            },
             WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(*position),
-            WindowEvent::MouseInput { state, button, .. } => {
-                self.handle_mouse_input(*button, *state, ctx)
-            }
             WindowEvent::MouseWheel { delta, .. } => Self::handle_mouse_wheel(delta),
             _ => InputUpdate::None,
         }
     }
 
-    // TODO: Try to DRY
-    /// Made for export, Updates state by doesn't run `try_trigger()`
+    /// Made for export. Updates state but doesn't run `try_trigger()`.
     pub fn process_event_without_actions(&mut self, event: &WindowEvent) -> InputUpdate {
+        self.track_state(event);
+
         match event {
-            WindowEvent::ModifiersChanged(modifiers) => {
-                self.modifiers = modifiers.state();
-                InputUpdate::None
-            },
-            WindowEvent::Focused(false) => {
-                self.key_down.clear();
-                self.mouse_buttons_down.clear();
-                self.modifiers = ModifiersState::default();
-                InputUpdate::FocusLost
-            },
-            WindowEvent::KeyboardInput { event, .. } => {
-                if let PhysicalKey::Code(key) = event.physical_key {
-                    match event.state {
-                        ElementState::Pressed => {
-                            self.key_down.insert(key);
-                        }
-                        ElementState::Released => {
-                            self.key_down.remove(&key);
-                        }
-                    }
-                }
-                InputUpdate::None
-            },
-            WindowEvent::MouseInput { state, button, .. } => {
-                match state {
-                    ElementState::Pressed => {
-                        self.mouse_buttons_down.insert(*button);
-                    }
-                    ElementState::Released => {
-                        self.mouse_buttons_down.remove(button);
-                    }
-                }
-                InputUpdate::None
-            },
-            WindowEvent::CursorMoved { position, .. } => {
-                self.handle_cursor_moved(*position)
-            }
+            WindowEvent::Focused(false) => InputUpdate::FocusLost,
+            WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(*position),
             _ => InputUpdate::None,
         }
     }
 
-    fn handle_keyboard(&mut self, event: &KeyEvent, ctx: &mut Ctx) -> InputUpdate {
-        let PhysicalKey::Code(key) = event.physical_key else {
-            return InputUpdate::None;
-        };
-        match event.state {
-            ElementState::Pressed => {
-                self.key_down.insert(key);
-                if self.try_trigger(InputTrigger::Key(key), ctx) {
-                    return InputUpdate::ActionExecuted;
+    fn track_state(&mut self, event: &WindowEvent) -> Option<InputTrigger> {
+        match event {
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+
+                None
+            }
+
+            WindowEvent::Focused(false) => {
+                self.key_down.clear();
+                self.mouse_buttons_down.clear();
+                self.modifiers = ModifiersState::default();
+
+                None
+            }
+
+            WindowEvent::KeyboardInput { event, .. } => {
+                let PhysicalKey::Code(key) = event.physical_key else {
+                    return None;
+                };
+
+                match event.state {
+                    ElementState::Pressed => {
+                        self.key_down.insert(key);
+
+                        Some(InputTrigger::Key(key))
+                    }
+
+                    ElementState::Released => {
+                        self.key_down.remove(&key);
+
+                        None
+                    }
                 }
             }
-            ElementState::Released => {
-                self.key_down.remove(&key);
-            }
-        }
 
-        InputUpdate::None
+            WindowEvent::MouseInput { state, button, .. } => match state {
+                ElementState::Pressed => {
+                    self.mouse_buttons_down.insert(*button);
+
+                    Some(InputTrigger::MouseButton(*button))
+                }
+
+                ElementState::Released => {
+                    self.mouse_buttons_down.remove(button);
+
+                    None
+                }
+            },
+
+            _ => None,
+        }
     }
 
     fn handle_cursor_moved(&mut self, position: PhysicalPosition<f64>) -> InputUpdate {
         let new_pos = Vec2::new(position.x as f32, position.y as f32);
+
         let delta = new_pos - self.cursor_pos;
+
         self.cursor_pos = new_pos;
 
         InputUpdate::CursorMoved {
@@ -215,35 +218,16 @@ impl<Ctx> InputManager<Ctx> {
         }
     }
 
-    fn handle_mouse_input(
-        &mut self,
-        button: MouseButton,
-        state: ElementState,
-        ctx: &mut Ctx,
-    ) -> InputUpdate {
-        match state {
-            ElementState::Pressed => {
-                self.mouse_buttons_down.insert(button);
-                if self.try_trigger(InputTrigger::MouseButton(button), ctx) {
-                    return InputUpdate::ActionExecuted;
-                }
-            }
-            ElementState::Released => {
-                self.mouse_buttons_down.remove(&button);
-            }
-        }
-
-        InputUpdate::MouseButton { button, state }
-    }
-
     fn handle_mouse_wheel(delta: &MouseScrollDelta) -> InputUpdate {
         let delta_vec = match *delta {
             MouseScrollDelta::LineDelta(x, y) => Vec2::new(x, y),
+
             MouseScrollDelta::PixelDelta(pos) => Vec2::new(
                 pos.x as f32 * TOUCHPAD_SCROLL_SCALE,
                 pos.y as f32 * TOUCHPAD_SCROLL_SCALE,
             ),
         };
+
         InputUpdate::MouseWheel { delta: delta_vec }
     }
 
@@ -251,8 +235,10 @@ impl<Ctx> InputManager<Ctx> {
         let Some(action_id) = self.find_matching_action(trigger) else {
             return false;
         };
+
         if let Some(callback) = self.actions.get_mut(&action_id) {
             callback(ctx);
+
             true
         } else {
             false
