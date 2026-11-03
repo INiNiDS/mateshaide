@@ -112,12 +112,18 @@ impl Runtime {
         ensure!(state.len() <= MAX_STATE_BYTES, "plugin state limit");
 
         let args = serde_json::to_string(&args)?;
-        ensure!(args.len() <= MAX_CALLBACK_INPUT_BYTES, "callback input limit");
+        ensure!(
+            args.len() <= MAX_CALLBACK_INPUT_BYTES,
+            "callback input limit"
+        );
 
         let out = self
             .backend
             .invoke(&self.sources, &self.entry, &state, name, &args)?;
-        ensure!(out.len() <= MAX_CALLBACK_OUTPUT_BYTES, "callback output limit");
+        ensure!(
+            out.len() <= MAX_CALLBACK_OUTPUT_BYTES,
+            "callback output limit"
+        );
 
         let out: Value = serde_json::from_str(&out)?;
         let next = out.get("state").context("missing plugin state")?.clone();
@@ -206,11 +212,7 @@ fn validate_ids(contributions: &Contributions) -> Result<()> {
             .iter()
             .map(|command| command.id.as_str())
             .collect(),
-        contributions
-            .services
-            .iter()
-            .map(String::as_str)
-            .collect(),
+        contributions.services.iter().map(String::as_str).collect(),
         contributions
             .object_types
             .iter()

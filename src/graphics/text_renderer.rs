@@ -165,7 +165,7 @@ impl TextLayer {
 }
 
 fn is_visible(screen: Vec2, px: f32, text: &str, screen_size: Vec2) -> bool {
-    let approx_w = text.lines().map(|s|s.chars().count()).max().unwrap_or(0) as f32 * px * 1.5;
+    let approx_w = text.lines().map(|s| s.chars().count()).max().unwrap_or(0) as f32 * px * 1.5;
     let approx_h = text.split('\n').count().max(1) as f32 * px * 1.25;
 
     let right = screen.x + approx_w;

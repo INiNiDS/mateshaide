@@ -1,8 +1,8 @@
-use super::{geometry, TestMode, overlay};
 use super::spawner::{TestShapeSpec, TestSpawner};
+use super::{TestMode, geometry, overlay};
+use crate::dev::geometry::CORNERS;
 use crate::{Canvas, Color, ShapeInstance, ShapeRegistry, palette};
 use glam::Vec2;
-use crate::dev::geometry::CORNERS;
 
 fn setup(mode: TestMode) -> (Canvas, ShapeRegistry, TestSpawner) {
     let registry = ShapeRegistry::with_builtins().unwrap();

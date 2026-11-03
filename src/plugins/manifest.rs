@@ -56,8 +56,8 @@ impl Manifest {
     pub fn parse(text: &str) -> Result<Self> {
         data_only(text)?;
 
-        let mut manifest = Self::from_aam_str(text)
-            .map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
+        let mut manifest =
+            Self::from_aam_str(text).map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
 
         manifest.normalize();
         manifest.validate()?;
@@ -91,7 +91,10 @@ impl Manifest {
     }
 
     fn validate(&self) -> Result<()> {
-        ensure!(valid_id(&self.id) && self.id.contains('.'), "invalid plugin ID");
+        ensure!(
+            valid_id(&self.id) && self.id.contains('.'),
+            "invalid plugin ID"
+        );
         ensure!(
             !self.name.trim().is_empty() && self.name.len() <= MAX_NAME_BYTES,
             "invalid name"
@@ -241,7 +244,10 @@ fn document_string(value: &mut String) {
     let trimmed = value.trim();
 
     for quote in ['"', '\''] {
-        if let Some(inner) = trimmed.strip_prefix(quote).and_then(|s| s.strip_suffix(quote)) {
+        if let Some(inner) = trimmed
+            .strip_prefix(quote)
+            .and_then(|s| s.strip_suffix(quote))
+        {
             *value = inner.to_owned();
             return;
         }

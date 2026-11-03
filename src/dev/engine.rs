@@ -53,14 +53,17 @@ impl Engine {
     pub fn spawn_test_shape(&mut self) {
         match self.test_spawner.mode {
             Some(TestMode::Spawn) => self.test_spawner.spawn(&mut self.canvas),
-            Some(TestMode::Erase) => { self.erase_test_at_cursor(); }
+            Some(TestMode::Erase) => {
+                self.erase_test_at_cursor();
+            }
             _ => {}
         }
     }
 
     pub fn erase_test_at_cursor(&mut self) {
         self.finish_test_interaction();
-        self.test_spawner.erase_at_cursor(&mut self.canvas, &self.shapes);
+        self.test_spawner
+            .erase_at_cursor(&mut self.canvas, &self.shapes);
     }
 
     pub fn delete_test_selection(&mut self) {

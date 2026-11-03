@@ -381,8 +381,11 @@ impl Renderer {
             });
         }
         if !frame.instances.is_empty() {
-            self.queue
-                .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(frame.instances));
+            self.queue.write_buffer(
+                &self.instance_buffer,
+                0,
+                bytemuck::cast_slice(frame.instances),
+            );
         }
 
         if frame.plugin_ui.shapes.len() > self.plugin_capacity {
@@ -411,8 +414,12 @@ impl Renderer {
                 .prepare(&self.device, &self.queue, frame.camera, frame.overlay_texts);
         }
         if !frame.plugin_ui.texts.is_empty() {
-            self.plugin_text
-                .prepare(&self.device, &self.queue, frame.camera, &frame.plugin_ui.texts);
+            self.plugin_text.prepare(
+                &self.device,
+                &self.queue,
+                frame.camera,
+                &frame.plugin_ui.texts,
+            );
         }
         self.ui_images.prepare(
             &self.device,
@@ -515,7 +522,9 @@ impl Renderer {
         view: &wgpu::TextureView,
         swatch: Option<Color>,
     ) {
-        let Some(color) = swatch else { return; };
+        let Some(color) = swatch else {
+            return;
+        };
         let overlay = build_swatch_instances(color, self.size.width, self.size.height);
         self.queue.write_buffer(
             &self.overlay_instance_buffer,
@@ -646,9 +655,7 @@ impl Renderer {
         view: &wgpu::TextureView,
         plugin_ui: &crate::plugins::UiFrame,
     ) {
-        if plugin_ui.shapes.is_empty()
-            && plugin_ui.texts.is_empty()
-            && plugin_ui.images.is_empty()
+        if plugin_ui.shapes.is_empty() && plugin_ui.texts.is_empty() && plugin_ui.images.is_empty()
         {
             return;
         }

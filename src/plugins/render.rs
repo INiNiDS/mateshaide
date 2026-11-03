@@ -57,25 +57,14 @@ impl Scene {
 
                     ensure!(w >= 0.0 && h >= 0.0, "negative rectangle");
 
-                    shapes.push(ShapeInstance::rect(
-                        num(p, "x")?,
-                        num(p, "y")? - h,
-                        w,
-                        h,
-                        c,
-                    ));
+                    shapes.push(ShapeInstance::rect(num(p, "x")?, num(p, "y")? - h, w, h, c));
                 }
 
                 "circle" => {
                     let r = num(p, "radius")?;
                     ensure!(r >= 0.0, "negative radius");
 
-                    shapes.push(ShapeInstance::circle(
-                        num(p, "x")?,
-                        num(p, "y")?,
-                        r,
-                        c,
-                    ));
+                    shapes.push(ShapeInstance::circle(num(p, "x")?, num(p, "y")?, r, c));
                 }
 
                 "line" => {
@@ -224,14 +213,7 @@ impl UiFrame {
         ));
     }
 
-    pub fn rounded_rect(
-        &mut self,
-        r: [f32; 4],
-        radius: f32,
-        color: Color,
-        w: f32,
-        h: f32,
-    ) {
+    pub fn rounded_rect(&mut self, r: [f32; 4], radius: f32, color: Color, w: f32, h: f32) {
         let [left, top, right, bottom] = r;
 
         if right <= left || bottom <= top {
@@ -248,12 +230,7 @@ impl UiFrame {
             return;
         }
 
-        self.rect(
-            [left, top + radius, right, bottom - radius],
-            color,
-            w,
-            h,
-        );
+        self.rect([left, top + radius, right, bottom - radius], color, w, h);
 
         let rows = radius.ceil() as usize;
 
@@ -306,9 +283,9 @@ impl UiFrame {
 
     #[must_use]
     pub fn blocks_pointer(&self, p: Vec2) -> bool {
-        self.pointer_regions.iter().any(|r| {
-            p.x >= r[0] && p.y >= r[1] && p.x <= r[2] && p.y <= r[3]
-        })
+        self.pointer_regions
+            .iter()
+            .any(|r| p.x >= r[0] && p.y >= r[1] && p.x <= r[2] && p.y <= r[3])
     }
 
     pub fn text(
@@ -351,29 +328,19 @@ impl UiFrame {
         self.hits
             .iter()
             .rev()
-            .find(|(r, _)| {
-                p.x >= r[0] && p.y >= r[1] && p.x <= r[2] && p.y <= r[3]
-            })
+            .find(|(r, _)| p.x >= r[0] && p.y >= r[1] && p.x <= r[2] && p.y <= r[3])
             .map(|(_, a)| a.clone())
     }
 
-
     // HIGH COMPLEXITY TODO
-    pub fn append_clipped(
-        &mut self,
-        layer: Self,
-        camera: &crate::Camera,
-        clip: [f32; 4],
-    ) {
+    pub fn append_clipped(&mut self, layer: Self, camera: &crate::Camera, clip: [f32; 4]) {
         let w = camera.screen_size.x;
         let h = camera.screen_size.y;
 
         for shape in layer.shapes {
-            let left =
-                (shape.center[0] - shape.size[0] * 0.5 + 1.0) * w * 0.5;
+            let left = (shape.center[0] - shape.size[0] * 0.5 + 1.0) * w * 0.5;
 
-            let top =
-                (1.0 - shape.center[1] - shape.size[1] * 0.5) * h * 0.5;
+            let top = (1.0 - shape.center[1] - shape.size[1] * 0.5) * h * 0.5;
 
             let r = [
                 left.max(clip[0]),
@@ -419,11 +386,7 @@ impl UiFrame {
         }
 
         for (r, action) in layer.hits {
-            if r[0] >= clip[0]
-                && r[1] >= clip[1]
-                && r[2] <= clip[2]
-                && r[3] <= clip[3]
-            {
+            if r[0] >= clip[0] && r[1] >= clip[1] && r[2] <= clip[2] && r[3] <= clip[3] {
                 self.hits.push((r, action));
             }
         }
@@ -447,17 +410,16 @@ impl UiFrame {
             style
                 .background
                 .map_or(self.theme.surface, |c| Color::new(c[0], c[1], c[2], c[3]))
-
         };
 
-        let ink = style
-            .text
-            .map_or(if selected {
+        let ink = style.text.map_or(
+            if selected {
                 self.theme.button_text
             } else {
                 self.theme.text
-            }, |c| Color::new(c[0], c[1], c[2], c[3]));
-
+            },
+            |c| Color::new(c[0], c[1], c[2], c[3]),
+        );
 
         let border = if selected {
             self.theme.accent
@@ -481,10 +443,7 @@ impl UiFrame {
         let capacity = ((r[2] - r[0] - 14.0) / 7.4).max(1.0) as usize;
 
         let label = if label.chars().count() > capacity {
-            let prefix: String = label
-                .chars()
-                .take(capacity.saturating_sub(3))
-                .collect();
+            let prefix: String = label.chars().take(capacity.saturating_sub(3)).collect();
 
             format!("{prefix}...")
         } else {
@@ -503,4 +462,3 @@ impl UiFrame {
         self.hits.push((r, action));
     }
 }
-

@@ -5,7 +5,6 @@ use winit::event::{ElementState, KeyEvent, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 
-
 const WHEEL_X_EPSILON: f32 = 0.001;
 const WHEEL_PAN_SCALE: f32 = 32.0;
 

@@ -1,7 +1,10 @@
 use crate::export::ExportError;
 use crate::export::bounds::Rect;
 use glam::Vec2;
-use printpdf::{Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, RawImageData, RawImageFormat, XObjectTransform};
+use printpdf::{
+    Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, RawImageData, RawImageFormat,
+    XObjectTransform,
+};
 
 pub const PAGE_WIDTH_MM: f32 = 210.0;
 pub const PAGE_HEIGHT_MM: f32 = 297.0;
@@ -82,7 +85,7 @@ impl PdfBuilder {
             transform: XObjectTransform {
                 dpi: Some(dpi),
                 ..Default::default()
-            }
+            },
         }];
 
         self.pages

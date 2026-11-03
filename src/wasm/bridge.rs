@@ -1,4 +1,3 @@
-
 #[cfg(target_arch = "wasm32")]
 pub mod js_bridge {
     #[wasm_bindgen::prelude::wasm_bindgen]

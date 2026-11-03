@@ -91,7 +91,11 @@ impl Default for TestSpawner {
 
 impl TestSpawner {
     pub fn toggle_mode(&mut self, target: TestMode) {
-        self.mode = if self.mode == Some(target) { None } else { Some(target) };
+        self.mode = if self.mode == Some(target) {
+            None
+        } else {
+            Some(target)
+        };
         self.selected = None;
         tracing::info!("test mode: {:?}", self.mode);
     }
@@ -195,9 +199,16 @@ impl TestSpawner {
     ) -> bool {
         self.cursor_screen = screen;
         let world = canvas.camera.screen_to_world(screen);
-        let Some(drag) = self.drag else { return self.mode.is_some() };
+        let Some(drag) = self.drag else {
+            return self.mode.is_some();
+        };
         let (index, result) = match drag {
-            TestDrag::Spawn { anchor_world, anchor_screen, dragged, .. } => {
+            TestDrag::Spawn {
+                anchor_world,
+                anchor_screen,
+                dragged,
+                ..
+            } => {
                 self.drag = Some(TestDrag::Spawn {
                     anchor_world,
                     anchor_screen,
@@ -207,19 +218,37 @@ impl TestSpawner {
                 });
                 return true;
             }
-            TestDrag::Move { index, original, anchor_world, anchor_screen } => {
+            TestDrag::Move {
+                index,
+                original,
+                anchor_world,
+                anchor_screen,
+            } => {
                 let mut result = original;
                 if screen != anchor_screen {
-                    result.center = (Vec2::from_array(original.center) + (world - anchor_world)).to_array();
+                    result.center =
+                        (Vec2::from_array(original.center) + (world - anchor_world)).to_array();
                 }
                 (index, result)
             }
-            TestDrag::Resize { index, original, corner, grab_offset, anchor_screen } => (
+            TestDrag::Resize {
+                index,
+                original,
+                corner,
+                grab_offset,
+                anchor_screen,
+            } => (
                 index,
                 if screen == anchor_screen {
                     original
                 } else {
-                    geometry::resize_from_corner(original, corner, world - grab_offset, shift, registry)
+                    geometry::resize_from_corner(
+                        original,
+                        corner,
+                        world - grab_offset,
+                        shift,
+                        registry,
+                    )
                 },
             ),
         };
@@ -243,8 +272,12 @@ impl TestSpawner {
                     self.insert_spawn(canvas, shape);
                 }
             }
-            TestDrag::Move { index, original, .. }
-            | TestDrag::Resize { index, original, .. } => {
+            TestDrag::Move {
+                index, original, ..
+            }
+            | TestDrag::Resize {
+                index, original, ..
+            } => {
                 if let Some(result) = canvas.instances.get(index).copied() {
                     if result != original {
                         canvas.instances[index] = original;
@@ -257,10 +290,16 @@ impl TestSpawner {
     }
 
     pub fn cancel_interaction(&mut self, canvas: &mut Canvas) -> bool {
-        let Some(drag) = self.drag.take() else { return false };
+        let Some(drag) = self.drag.take() else {
+            return false;
+        };
         match drag {
-            TestDrag::Move { index, original, .. }
-            | TestDrag::Resize { index, original, .. } => {
+            TestDrag::Move {
+                index, original, ..
+            }
+            | TestDrag::Resize {
+                index, original, ..
+            } => {
                 if let Some(shape) = canvas.instances.get_mut(index) {
                     *shape = original;
                 }
@@ -300,7 +339,9 @@ impl TestSpawner {
             return false;
         }
         let world = canvas.camera.screen_to_world(self.cursor_screen);
-        let Some(index) = geometry::pick(canvas, world, registry) else { return false };
+        let Some(index) = geometry::pick(canvas, world, registry) else {
+            return false;
+        };
         self.clear_selection();
         canvas.erase_at(index)
     }
@@ -325,7 +366,14 @@ impl TestSpawner {
         }
         let spec = self.current?;
         let color = self.preview_color()?;
-        if let Some(TestDrag::Spawn { anchor_world, cursor_world, dragged: true, square, .. }) = drag {
+        if let Some(TestDrag::Spawn {
+            anchor_world,
+            cursor_world,
+            dragged: true,
+            square,
+            ..
+        }) = drag
+        {
             let delta = cursor_world - anchor_world;
             let mut requested = delta.abs();
             if square {
@@ -336,7 +384,8 @@ impl TestSpawner {
                 if delta.x < 0.0 { -1.0 } else { 1.0 },
                 if delta.y < 0.0 { -1.0 } else { 1.0 },
             );
-            shape.center = (anchor_world + direction * Vec2::from_array(shape.size) * 0.5).to_array();
+            shape.center =
+                (anchor_world + direction * Vec2::from_array(shape.size) * 0.5).to_array();
             return Some(shape);
         }
         let center = if let Some(TestDrag::Spawn { anchor_world, .. }) = drag {
@@ -344,7 +393,12 @@ impl TestSpawner {
         } else {
             canvas.camera.screen_to_world(self.cursor_screen)
         };
-        Some(geometry::build_instance(spec, center, self.spawn_size, color))
+        Some(geometry::build_instance(
+            spec,
+            center,
+            self.spawn_size,
+            color,
+        ))
     }
 
     pub(super) fn handle_at(
@@ -357,7 +411,8 @@ impl TestSpawner {
         if !geometry::can_resize(shape, registry) {
             return None;
         }
-        CORNERS.into_iter()
+        CORNERS
+            .into_iter()
             .map(|corner| {
                 let delta = canvas.camera.world_to_screen(corner.position(shape)) - screen;
                 (corner, delta)
@@ -368,7 +423,9 @@ impl TestSpawner {
     }
 
     pub fn next_picked_color(&mut self) {
-        let index = TEST_PALETTE.iter().position(|&color| color == self.picked_color)
+        let index = TEST_PALETTE
+            .iter()
+            .position(|&color| color == self.picked_color)
             .map_or(0, |i| (i + 1) % TEST_PALETTE.len());
         self.picked_color = TEST_PALETTE[index];
     }

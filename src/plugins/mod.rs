@@ -15,9 +15,9 @@ mod ui;
 pub use document::PluginNode;
 pub use manager::PluginManager;
 pub use render::{Scene, UiFrame};
+pub(crate) use render::{UiImage, UiImageKind};
 pub use ui::PluginPage;
 pub(crate) use ui::UiAction;
-pub(crate) use render::{UiImage, UiImageKind};
 
 #[cfg(target_arch = "wasm32")]
 pub async fn prepare_browser() -> anyhow::Result<()> {

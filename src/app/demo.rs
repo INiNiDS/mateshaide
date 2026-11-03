@@ -1,8 +1,8 @@
+use crate::canvas::CanvasText;
 use crate::core::Color;
 use crate::engine::Engine;
 use crate::palette;
 use crate::shape::ShapeInstance;
-use crate::canvas::CanvasText;
 use glam::Vec2;
 
 const HELP_TEXT: &str = "\
@@ -96,7 +96,7 @@ pub(super) fn seed_demo_shapes(engine: &mut Engine) {
         color: palette::GRAY_900,
     });
 
-   engine.canvas.add_text(CanvasText {
+    engine.canvas.add_text(CanvasText {
         position: Vec2::new(-600.0, 400.0),
         text: HELP_TEXT.to_owned(),
         size: 16.0,

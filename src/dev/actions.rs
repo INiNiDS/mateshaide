@@ -1,7 +1,7 @@
 use crate::engine::Engine;
 use crate::input::{InputManager, Shortcut};
-use winit::keyboard::KeyCode;
 use glam::Vec2;
+use winit::keyboard::KeyCode;
 
 pub(crate) fn register(input: &mut InputManager) {
     register_test_shape_actions(input);
@@ -88,7 +88,10 @@ fn register_test_edit_actions(input: &mut InputManager) {
         engine.escape_test_interaction();
     });
     input.bind(Shortcut::key(KeyCode::KeyV), "test_toggle_select");
-    input.bind(Shortcut::key(KeyCode::Digit1).ctrl().shift(), "test_toggle_select");
+    input.bind(
+        Shortcut::key(KeyCode::Digit1).ctrl().shift(),
+        "test_toggle_select",
+    );
     input.bind(Shortcut::key(KeyCode::Delete), "test_delete_selected");
     input.bind(Shortcut::key(KeyCode::Backspace), "test_delete_selected");
     input.bind(Shortcut::key(KeyCode::Escape), "test_escape");
@@ -96,10 +99,20 @@ fn register_test_edit_actions(input: &mut InputManager) {
 
 fn register_test_size_actions(input: &mut InputManager) {
     for (key, factor, all, width, height) in [
-        (KeyCode::BracketLeft, 1.0 / 1.1,
-         "test_size_down", "test_width_down", "test_height_down"),
-        (KeyCode::BracketRight, 1.1,
-         "test_size_up", "test_width_up", "test_height_up"),
+        (
+            KeyCode::BracketLeft,
+            1.0 / 1.1,
+            "test_size_down",
+            "test_width_down",
+            "test_height_down",
+        ),
+        (
+            KeyCode::BracketRight,
+            1.1,
+            "test_size_up",
+            "test_width_up",
+            "test_height_up",
+        ),
     ] {
         input.register_action(all, move |engine: &mut Engine| {
             engine.scale_test_spawn_axes(Vec2::splat(factor));
