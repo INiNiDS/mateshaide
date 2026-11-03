@@ -27,6 +27,11 @@ const DEVELOP_SECS: f32 = 2.4;
 const BUTTONS_DELAY: f32 = 0.7;
 const BUTTONS_FADE: f32 = 0.25;
 
+const BUTTON_FONT_SIZE: f32 = 15.0;
+const BUTTON_CHAR_WIDTH_RATIO: f32 = 0.32;
+const BUTTON_BASELINE_SHIFT: f32 = 0.55;
+const BUTTON_MIN_OPACITY: f32 = 0.01;
+
 struct PdfJob {
     tiles: VecDeque<Rect>,
     builder: PdfBuilder,
@@ -105,10 +110,10 @@ impl Engine {
 
     pub fn redraw(&mut self) {
         #[cfg(debug_assertions)]
-        let swatch = if !self.is_capturing() {
-            self.test_spawner.preview_color()
-        } else {
+        let swatch = if self.is_capturing() {
             None
+        } else {
+            self.test_spawner.preview_color()
         };
 
         let (sw, sh) = {
@@ -123,22 +128,19 @@ impl Engine {
             crate::dev::overlay::build_instances(&self.canvas, &self.shapes, &self.test_spawner)
         };
 
-        let mut overlay_texts = match self.capture_layout(sw, sh) {
-            Some(l) => {
-                let b = capture_overlay::compute_button_rects(&l, sw, sh);
-                self.build_button_texts(&b, self.button_opacity())
-            }
-            None => {
-                #[cfg(debug_assertions)]
-                let texts = if !self.is_capturing() {
-                    crate::dev::overlay::build_texts(&self.canvas, &self.test_spawner)
-                } else {
-                    Vec::new()
-                };
-                #[cfg(not(debug_assertions))]
-                let texts = Vec::new();
-                texts
-            }
+        let mut overlay_texts = if let Some(l) = self.capture_layout(sw, sh) {
+            let b = capture_overlay::compute_button_rects(&l, sw, sh);
+            self.build_button_texts(&b, self.button_opacity())
+        } else {
+            #[cfg(debug_assertions)]
+            let texts = if self.is_capturing() {
+                Vec::new()
+            } else {
+                crate::dev::overlay::build_texts(&self.canvas, &self.test_spawner)
+            };
+            #[cfg(not(debug_assertions))]
+            let texts = Vec::new();
+            texts
         };
         if !self.is_capturing() {
             let theme = self.plugins.settings.appearance.theme();
@@ -400,22 +402,21 @@ impl Engine {
         }
     }
 
-    // TODO: Remove "Magic Numbers"
     fn build_button_texts(&self, buttons: &[ButtonRect; 2], opacity: f32) -> Vec<CanvasText> {
-        if opacity < 0.01 {
+        if opacity < BUTTON_MIN_OPACITY {
             return Vec::new();
         }
         buttons
             .iter()
             .map(|btn| {
-                let cx = (btn.screen[0] + btn.screen[2]) * 0.5;
-                let cy = (btn.screen[1] + btn.screen[3]) * 0.5;
+                let cx = f32::midpoint(btn.screen[0], btn.screen[2]);
+                let cy = f32::midpoint(btn.screen[1], btn.screen[3]);
                 let sz = 15.0 / self.canvas.camera.zoom;
-                let est_w = btn.label.len() as f32 * sz * 0.32;
+                let est_w = btn.label.len() as f32 * sz * BUTTON_CHAR_WIDTH_RATIO;
                 let world = self
                     .canvas
                     .camera
-                    .screen_to_world(Vec2::new(cx - est_w, cy - sz * 0.55));
+                    .screen_to_world(Vec2::new(cx - est_w, cy - sz * BUTTON_BASELINE_SHIFT));
                 CanvasText {
                     position: world,
                     text: btn.label.to_string(),
@@ -501,8 +502,7 @@ impl Engine {
             Ok(bytes) => {
                 let stamp = web_time::SystemTime::now()
                     .duration_since(web_time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
+                    .map_or(0, |d| d.as_secs());
                 export::save::save_bytes(
                     &bytes,
                     "application/pdf",

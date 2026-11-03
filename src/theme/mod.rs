@@ -102,7 +102,7 @@ impl Theme {
         let max = color.r.max(color.g).max(color.b);
         let min = color.r.min(color.g).min(color.b);
 
-        if self.dark && max <= 0.28 && max - min <= 0.12 {
+        if self.dark && max <= 0.40 && max - min <= 0.12 {
             self.text.with_alpha(color.a)
         } else {
             color

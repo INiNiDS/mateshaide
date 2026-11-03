@@ -1,9 +1,13 @@
 use crate::graphics::capture_overlay::ButtonAction;
 use crate::{App, Engine, InputManager, InputUpdate};
 use glam::Vec2;
-use winit::event::{ElementState, MouseButton};
+use winit::event::{ElementState, KeyEvent, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
+
+
+const WHEEL_X_EPSILON: f32 = 0.001;
+const WHEEL_PAN_SCALE: f32 = 32.0;
 
 impl App {
     pub(super) fn handle_redraw_requested(window: &Window, engine: &mut Engine) {
@@ -59,45 +63,57 @@ impl App {
     ) {
         match event {
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
-                if event.state == ElementState::Pressed {
-                    if let PhysicalKey::Code(key) = event.physical_key {
-                        match key {
-                            KeyCode::Escape => {
-                                engine.dismiss_capture();
-                                window.request_redraw();
-                            }
-                            KeyCode::KeyS if engine.is_in_capture_preview() => {
-                                engine.save_capture();
-                                window.request_redraw();
-                            }
-                            KeyCode::KeyC if engine.is_in_capture_preview() => {
-                                engine.copy_capture();
-                                window.request_redraw();
-                            }
-                            _ => {}
-                        }
-                    }
-                }
+                Self::handle_capture_key(event, engine, window);
             }
 
             winit::event::WindowEvent::MouseInput { state, button, .. } => {
-                if *state == ElementState::Pressed && *button == MouseButton::Left {
-                    let cursor = engine.capture_cursor;
-                    match engine.check_button_click(cursor) {
-                        Some(ButtonAction::Save) => {
-                            engine.save_capture();
-                            window.request_redraw();
-                        }
-                        Some(ButtonAction::Copy) => {
-                            engine.copy_capture();
-                            window.request_redraw();
-                        }
-                        None => {}
+                Self::handle_capture_click(state, button, engine, window);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_capture_key(event: &KeyEvent, engine: &mut Engine, window: &Window) {
+        if event.state == ElementState::Pressed {
+            if let PhysicalKey::Code(key) = event.physical_key {
+                match key {
+                    KeyCode::Escape => {
+                        engine.dismiss_capture();
+                        window.request_redraw();
                     }
+                    KeyCode::KeyS if engine.is_in_capture_preview() => {
+                        engine.save_capture();
+                        window.request_redraw();
+                    }
+                    KeyCode::KeyC if engine.is_in_capture_preview() => {
+                        engine.copy_capture();
+                        window.request_redraw();
+                    }
+                    _ => {}
                 }
             }
+        }
+    }
 
-            _ => {}
+    fn handle_capture_click(
+        state: &ElementState,
+        button: &MouseButton,
+        engine: &mut Engine,
+        window: &Window,
+    ) {
+        if *state == ElementState::Pressed && *button == MouseButton::Left {
+            let cursor = engine.capture_cursor;
+            match engine.check_button_click(cursor) {
+                Some(ButtonAction::Save) => {
+                    engine.save_capture();
+                    window.request_redraw();
+                }
+                Some(ButtonAction::Copy) => {
+                    engine.copy_capture();
+                    window.request_redraw();
+                }
+                None => {}
+            }
         }
     }
 
@@ -114,18 +130,17 @@ impl App {
             InputUpdate::None => {}
             InputUpdate::FocusLost => Self::handle_focus_lost(engine, window),
             InputUpdate::CursorMoved { position, delta } => {
-                Self::handle_cursor_moved(input, engine, position, window, delta)
+                Self::handle_cursor_moved(input, engine, position, window, delta);
             }
             InputUpdate::MouseWheel { delta } => {
-                Self::handle_mouse_wheel(input, engine, delta, window)
+                Self::handle_mouse_wheel(input, engine, delta, window);
             }
             InputUpdate::MouseButton { button, state } => {
-                Self::handle_mouse_button(input, engine, button, state, window)
+                Self::handle_mouse_button(input, engine, button, state, window);
             }
         }
     }
 
-    // HIGH COMPLEXITY TODO
     fn handle_mouse_button(
         input: &InputManager,
         engine: &mut Engine,
@@ -134,60 +149,98 @@ impl App {
         window: &Window,
     ) {
         if button == MouseButton::Left {
-            #[cfg(debug_assertions)]
-            if engine.test_spawner.mode.is_some() {
-                match state {
-                    ElementState::Pressed => {
-                        engine.test_spawner.pointer_pressed(
-                            &mut engine.canvas,
-                            &engine.shapes,
-                            input.cursor_position(),
-                            input.is_shift(),
-                        );
-                    }
-                    ElementState::Released => {
-                        engine.test_spawner.pointer_moved(
-                            &mut engine.canvas,
-                            &engine.shapes,
-                            input.cursor_position(),
-                            input.is_shift(),
-                        );
-                        engine.finish_test_interaction();
-                    }
-                }
+            if Self::handle_test_spawner_button(engine, input, state) {
                 window.request_redraw();
                 return;
             }
-            match state {
-                ElementState::Pressed => {
-                    engine
-                        .draw
-                        .begin(&mut engine.canvas, input.cursor_position());
-                    window.request_redraw();
-                }
-                ElementState::Released => {
-                    engine.draw.end(&mut engine.canvas);
-                    window.request_redraw();
-                }
-            }
+            Self::handle_left_button(input, engine, state, window);
         }
         if button == MouseButton::Right || button == MouseButton::Middle {
-            match state {
-                ElementState::Pressed => {
-                    #[cfg(debug_assertions)]
-                    engine.finish_test_interaction();
-                    if !engine.canvas.is_panning() {
-                        engine.canvas.start_pan();
-                    }
+            Self::handle_pan_button(input, engine, state, window);
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    fn handle_test_spawner_button(
+        engine: &mut Engine,
+        input: &InputManager,
+        state: ElementState,
+    ) -> bool {
+        if engine.test_spawner.mode.is_none() {
+            return false;
+        }
+        match state {
+            ElementState::Pressed => {
+                engine.test_spawner.pointer_pressed(
+                    &mut engine.canvas,
+                    &engine.shapes,
+                    input.cursor_position(),
+                    input.is_shift(),
+                );
+            }
+            ElementState::Released => {
+                engine.test_spawner.pointer_moved(
+                    &mut engine.canvas,
+                    &engine.shapes,
+                    input.cursor_position(),
+                    input.is_shift(),
+                );
+                engine.finish_test_interaction();
+            }
+        }
+        true
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn handle_test_spawner_button(
+        _engine: &mut Engine,
+        _input: &InputManager,
+        _state: ElementState,
+    ) -> bool {
+        false
+    }
+
+    fn handle_left_button(
+        input: &InputManager,
+        engine: &mut Engine,
+        state: ElementState,
+        window: &Window,
+    ) {
+        match state {
+            ElementState::Pressed => {
+                engine
+                    .draw
+                    .begin(&mut engine.canvas, input.cursor_position());
+                window.request_redraw();
+            }
+            ElementState::Released => {
+                engine.draw.end(&mut engine.canvas);
+                window.request_redraw();
+            }
+        }
+    }
+
+    fn handle_pan_button(
+        input: &InputManager,
+        engine: &mut Engine,
+        state: ElementState,
+        window: &Window,
+    ) {
+        match state {
+            ElementState::Pressed => {
+                #[cfg(debug_assertions)]
+                engine.finish_test_interaction();
+                if !engine.canvas.is_panning() {
+                    engine.canvas.start_pan();
                 }
-                ElementState::Released => {
-                    let still = input.is_mouse_down(MouseButton::Middle)
-                        || input.is_mouse_down(MouseButton::Right);
-                    if !still {
-                        engine.canvas.end_pan();
-                        engine.reset_frame_time();
-                        window.request_redraw();
-                    }
+            }
+            ElementState::Released => {
+                let still = input.is_mouse_down(MouseButton::Middle)
+                    || input.is_mouse_down(MouseButton::Right);
+                if !still {
+                    engine.canvas.end_pan();
+                    engine.reset_frame_time();
+                    window.request_redraw();
                 }
             }
         }
@@ -202,14 +255,14 @@ impl App {
             engine.canvas.zoom(input.cursor_position(), delta.y);
         } else {
             let pd = if input.is_shift() {
-                let x = if delta.x.abs() > 0.001 {
+                let x = if delta.x.abs() > WHEEL_X_EPSILON {
                     delta.x
                 } else {
                     delta.y
                 };
-                Vec2::new(x * 32.0, 0.0)
+                Vec2::new(x * WHEEL_PAN_SCALE, 0.0)
             } else {
-                Vec2::new(delta.x * 32.0, delta.y * 32.0)
+                Vec2::new(delta.x * WHEEL_PAN_SCALE, delta.y * WHEEL_PAN_SCALE)
             };
             engine.canvas.pan(pd);
         }
