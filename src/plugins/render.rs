@@ -9,6 +9,7 @@ pub struct Scene {
     pub shapes: Vec<ShapeInstance>,
     pub texts: Vec<CanvasText>,
 }
+
 impl Scene {
     #[must_use]
     pub fn len(&self) -> usize {
@@ -111,12 +112,30 @@ fn color(v: Option<&Value>) -> Result<Color> {
     Ok(Color::new(c[0], c[1], c[2], c[3]))
 }
 
+#[derive(Clone, Copy)]
+#[repr(usize)]
+pub(crate) enum UiImageKind {
+    Blood = 0,
+    Pumpkin = 1,
+    Strips = 2,
+    Web = 3,
+}
+
+pub(crate) struct UiImage {
+    pub kind: UiImageKind,
+    pub bounds: [f32; 4],
+    pub anchor: [f32; 2],
+    pub flip_x: bool,
+    pub after_shapes: usize
+}
+
 #[derive(Default)]
 pub struct UiFrame {
     pub theme: crate::theme::Theme,
     pub shapes: Vec<ShapeInstance>,
     pub texts: Vec<CanvasText>,
     pub hits: Vec<([f32; 4], UiAction)>,
+    pub(crate) images: Vec<UiImage>,
 }
 
 impl UiFrame {
@@ -126,6 +145,22 @@ impl UiFrame {
             theme,
             ..Self::default()
         }
+    }
+
+    pub(crate) fn image(
+        &mut self,
+        kind: UiImageKind,
+        bounds: [f32; 4],
+        anchor: [f32; 2],
+        flip_x: bool,
+    ) {
+        self.images.push(UiImage {
+            kind,
+            bounds,
+            anchor,
+            flip_x,
+            after_shapes: self.shapes.len(),
+        });
     }
 
     pub fn rect(&mut self, screen: [f32; 4], color: Color, w: f32, h: f32) {

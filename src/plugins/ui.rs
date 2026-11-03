@@ -144,14 +144,19 @@ fn confirmation_columns(left: f32, right: f32) -> usize {
 }
 
 impl PluginManager {
+    #[must_use]
     pub fn ui_frame(&self, page: &PluginPage, camera: &Camera) -> UiFrame {
         let mut frame = UiFrame::with_theme(self.settings.appearance.theme());
+
         let screen = [camera.screen_size.x, camera.screen_size.y];
 
         if !page.open {
+            self.draw_halloween_decoration(&mut frame, camera, screen, false);
+
             self.draw_toolbar(&mut frame, page, camera, screen);
+
             self.draw_quick_actions(&mut frame, camera, screen);
-            self.draw_halloween_decoration(&mut frame, camera, screen);
+
             self.draw_notice(&mut frame, camera, screen);
 
             return frame;
@@ -206,43 +211,71 @@ impl PluginManager {
         }
     }
 
-    fn draw_halloween_decoration(&self, frame: &mut UiFrame, _camera: &Camera, [w, h]: [f32; 2]) {
-        if !frame.theme.halloween || w < 180.0 || h < 220.0 {
+    fn draw_halloween_decoration(
+        &self,
+        frame: &mut UiFrame,
+        _camera: &Camera,
+        [w, h]: [f32; 2],
+        plugin_page: bool,
+    ) {
+        use super::UiImageKind::{Blood, Pumpkin, Strips, Web};
+
+        if !frame.theme.halloween || self.confirmation.is_some() || w < 360.0 || h < 260.0 {
             return;
         }
 
-        const PIXELS: [&str; 10] = [
-            "......SS......",
-            ".....SS.......",
-            "...OOOOOOOO...",
-            "..OOOOOOOOOO..",
-            ".OOXXOOOOXXOO.",
-            ".OOXXOOOOXXOO.",
-            ".OOOOOXXOOOOO.",
-            "..OOXOOOOXOO..",
-            "...OOXXXXOO...",
-            "....OOOOOO....",
-        ];
+        let scale = (w / 1000.0).min(h / 700.0).clamp(0.65, 1.4);
 
-        let pixel_size = 3.0;
-        let left = w - UI_MARGIN - 14.0 * pixel_size;
-        let top = h - 64.0 - 10.0 * pixel_size;
+        let padding = 12.0 * scale;
 
-        for (row, line) in PIXELS.iter().enumerate() {
-            for (column, symbol) in line.bytes().enumerate() {
-                let color = match symbol {
-                    b'O' => Color::hex(0xf97316),
-                    b'S' => Color::hex(0x65a30d),
-                    b'X' => Color::hex(0x24102f),
-                    _ => continue,
-                };
+        let strip_width = (160.0 * scale).min(w * 0.24);
 
-                let x = left + column as f32 * pixel_size;
-                let y = top + row as f32 * pixel_size;
+        let strip_height = if plugin_page { h } else { h * 0.65 };
 
-                frame.rect([x, y, x + pixel_size, y + pixel_size], color, w, h);
-            }
+        let web_size = (128.0 * scale).min(w * 0.24).min(h * 0.30);
+
+        let pumpkin_size = (96.0 * scale).min(w * 0.18).min(h * 0.24);
+
+        let pumpkin_top = if plugin_page { 64.0 } else { 20.0 * scale };
+
+        frame.image(
+            Strips,
+            [w - strip_width, 0.0, w, strip_height],
+            [1.0, 0.0],
+            false,
+        );
+
+        if !plugin_page {
+            frame.image(
+                Blood,
+                [
+                    0.0,
+                    0.0,
+                    (180.0 * scale).min(w * 0.25),
+                    (280.0 * scale).min(h * 0.55),
+                ],
+                [0.0, 0.0],
+                false,
+            );
         }
+
+        frame.image(Web, [0.0, h - web_size, web_size, h], [0.0, 1.0], false);
+
+        if !plugin_page {
+            frame.image(Web, [w - web_size, h - web_size, w, h], [1.0, 1.0], true);
+        }
+
+        frame.image(
+            Pumpkin,
+            [
+                w - padding - pumpkin_size,
+                pumpkin_top,
+                w - padding,
+                pumpkin_top + pumpkin_size,
+            ],
+            [1.0, 0.0],
+            false,
+        );
     }
 
     fn draw_quick_actions(&self, frame: &mut UiFrame, camera: &Camera, [w, _h]: [f32; 2]) {
@@ -330,14 +363,7 @@ impl PluginManager {
         let text = clipped(&self.notice, notice_columns(w));
         let theme = self.settings.appearance.theme();
 
-        frame.text(
-            camera,
-            UI_MARGIN,
-            h - 38.0,
-            12.0,
-            text,
-            theme.warning,
-        );
+        frame.text(camera, UI_MARGIN, h - 38.0, 12.0, text, theme.warning);
     }
 
     // HIGH COMPLEXITY TODO
@@ -352,9 +378,10 @@ impl PluginManager {
 
         frame.rect([0.0, 0.0, w, h], theme.panel, w, h);
 
-        let width = (w - 40.0).clamp(1.0, 820.0);
-        let left = (w - width) * 0.5;
-        let right = left + width;
+        self.draw_halloween_decoration(frame, camera, [w, h], true);
+
+        let [left, right] = self.plugin_card_bounds(w, h);
+        let width = right - left;
         let bottom = (h - PAGE_BOTTOM).max(PAGE_TOP);
         let scroll = page.scroll.clamp(0.0, self.ui_scroll_max(page, camera));
 
@@ -373,12 +400,7 @@ impl PluginManager {
             let x = left + icon_size + 44.0;
             let columns = ((right - x - 20.0) / 8.0).max(1.0) as usize;
 
-            body.rect(
-                [left, y, right, y + CARD_HEIGHT],
-                theme.border,
-                w,
-                h,
-            );
+            body.rect([left, y, right, y + CARD_HEIGHT], theme.border, w, h);
             body.rect(
                 [left + 1.0, y + 1.0, right - 1.0, y + CARD_HEIGHT - 1.0],
                 theme.surface,
@@ -446,14 +468,7 @@ impl PluginManager {
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            body.text(
-                camera,
-                x,
-                y + 74.0,
-                14.0,
-                description,
-                theme.text,
-            );
+            body.text(camera, x, y + 74.0, 14.0, description, theme.text);
 
             body.text(
                 camera,
@@ -534,14 +549,7 @@ impl PluginManager {
     fn draw_page_header(&self, frame: &mut UiFrame, _page: &PluginPage, camera: &Camera, w: f32) {
         let theme = self.settings.appearance.theme();
 
-        frame.text(
-            camera,
-            22.0,
-            18.0,
-            24.0,
-            "Plugins",
-            theme.text,
-        );
+        frame.text(camera, 22.0, 18.0, 24.0, "Plugins", theme.text);
 
         frame.button(
             camera,
@@ -568,6 +576,22 @@ impl PluginManager {
                 false,
             );
         }
+    }
+
+    fn plugin_card_bounds(&self, w: f32, h: f32) -> [f32; 2] {
+        let scale = (w / 1000.0).min(h / 700.0).clamp(0.65, 1.4);
+
+        let gutter = if self.settings.appearance.halloween && w >= 640.0 {
+            (160.0 * scale).min(w * 0.24) + 24.0 * scale
+        } else {
+            20.0
+        };
+
+        let width = (w - 2.0 * gutter).clamp(1.0, 820.0);
+
+        let left = (w - width) * 0.5;
+
+        [left, left + width]
     }
 
     fn draw_page_footer(&self, frame: &mut UiFrame, camera: &Camera, w: f32, h: f32) {
@@ -631,14 +655,7 @@ impl PluginManager {
             Confirmation::Disable(ids) => ("Disable plugins?", "Disable", ids.len()),
         };
 
-        frame.text(
-            camera,
-            left + 20.0,
-            top + 16.0,
-            20.0,
-            title,
-            theme.text,
-        );
+        frame.text(camera, left + 20.0, top + 16.0, 20.0, title, theme.text);
         frame.text(
             camera,
             left + 20.0,

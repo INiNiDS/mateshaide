@@ -7,6 +7,7 @@ use crate::graphics::overlay::OVERLAY_CAP;
 use crate::graphics::overlay::build_swatch_instances;
 use crate::graphics::pipeline::RenderPipeline;
 use crate::graphics::text_renderer::TextLayer;
+use crate::graphics::ui_images::UiImageRenderer;
 use crate::shape::instance::ShapeInstance;
 use crate::shape::registry::ShapeRegistry;
 use std::sync::Arc;
@@ -51,6 +52,7 @@ pub struct Renderer {
     dev_instance_buffer: wgpu::Buffer,
     glow: GlowOverlay,
     capture_overlay: CaptureOverlay,
+    ui_images: UiImageRenderer,
 }
 
 impl Renderer {
@@ -223,6 +225,7 @@ impl Renderer {
         });
         let glow = GlowOverlay::new(&device, config.format);
         let capture_overlay = CaptureOverlay::new(&device, config.format);
+        let ui_images = UiImageRenderer::new(&device, config.format);
 
         Ok(Self {
             instance,
@@ -250,6 +253,7 @@ impl Renderer {
             dev_instance_buffer,
             glow,
             capture_overlay,
+            ui_images,
         })
     }
 
@@ -361,6 +365,12 @@ impl Renderer {
             self.plugin_text
                 .prepare(&self.device, &self.queue, camera, &plugin_ui.texts);
         }
+        self.ui_images.prepare(
+            &self.device,
+            &self.queue,
+            [camera.screen_size.x, camera.screen_size.y],
+            &plugin_ui.images,
+        );
         let output = match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(t) => t,
             CurrentSurfaceTexture::Suboptimal(t) => {
@@ -546,7 +556,10 @@ impl Renderer {
             self.overlay_text.render(&mut pass);
         }
 
-        if !plugin_ui.shapes.is_empty() || !plugin_ui.texts.is_empty() {
+        if !plugin_ui.shapes.is_empty()
+            || !plugin_ui.texts.is_empty()
+            || !plugin_ui.images.is_empty()
+        {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Plugin UI"),
                 color_attachments: &[Some(Self::load(&view))],
@@ -555,12 +568,32 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            self.render_pipeline.draw(
+
+            let mut shape_start = 0usize;
+            let shape_count = plugin_ui.shapes.len();
+
+            for (index, image) in plugin_ui.images.iter().enumerate() {
+                let split = image.after_shapes.min(shape_count).max(shape_start);
+
+                self.render_pipeline.draw_range(
+                    &mut pass,
+                    &self.overlay_bind_group,
+                    &self.plugin_buffer,
+                    shape_start as u32..split as u32,
+                );
+
+                self.ui_images.draw(&mut pass, index, image.kind);
+
+                shape_start = split;
+            }
+
+            self.render_pipeline.draw_range(
                 &mut pass,
                 &self.overlay_bind_group,
                 &self.plugin_buffer,
-                plugin_ui.shapes.len() as u32,
+                shape_start as u32..shape_count as u32,
             );
+
             if !plugin_ui.texts.is_empty() {
                 self.plugin_text.render(&mut pass);
             }

@@ -1,5 +1,5 @@
-use wgpu::{MultisampleState, PipelineCompilationOptions};
 use crate::shape::instance::ShapeInstance;
+use wgpu::{MultisampleState, PipelineCompilationOptions};
 
 pub struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
@@ -67,12 +67,27 @@ impl RenderPipeline {
         instance_buffer: &'a wgpu::Buffer,
         instance_count: u32,
     ) {
-        if instance_count == 0 {
+        self.draw_range(
+            render_pass,
+            camera_bind_group,
+            instance_buffer,
+            0..instance_count,
+        );
+    }
+
+    pub fn draw_range<'a>(
+        &'a self,
+        render_pass: &mut wgpu::RenderPass<'a>,
+        camera_bind_group: &'a wgpu::BindGroup,
+        instance_buffer: &'a wgpu::Buffer,
+        instances: std::ops::Range<u32>,
+    ) {
+        if instances.is_empty() {
             return;
         }
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
-        render_pass.draw(0..6, 0..instance_count);
+        render_pass.draw(0..6, instances);
     }
 }

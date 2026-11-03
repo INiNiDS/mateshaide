@@ -17,6 +17,7 @@ pub use manager::PluginManager;
 pub use render::{Scene, UiFrame};
 pub use ui::PluginPage;
 pub(crate) use ui::UiAction;
+pub(crate) use render::{UiImage, UiImageKind};
 
 #[cfg(target_arch = "wasm32")]
 pub async fn prepare_browser() -> anyhow::Result<()> {
