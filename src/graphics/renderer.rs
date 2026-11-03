@@ -623,7 +623,7 @@ impl Renderer {
                         &self.overlay_bind_group,
                         &self.overlay_instance_buffer,
                         shapes.len() as u32,
-                    )
+                    );
                 }
             }
         }
@@ -766,7 +766,7 @@ impl Renderer {
 
         let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Export RB"),
-            size: (padded * height) as u64,
+            size: u64::from(padded * height),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -872,7 +872,7 @@ impl Renderer {
         pending.buffer.unmap();
 
         if pending.swap_rb {
-            for px in pixels.chunks_exact_mut(4) {
+            for px in pixels.as_chunks_mut::<4>().0 {
                 px.swap(0, 2);
             }
         }

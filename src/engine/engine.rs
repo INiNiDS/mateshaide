@@ -322,8 +322,8 @@ impl Engine {
                 (now - *started).as_secs_f32() >= CONVERGE_SECS
             }
         };
-        if transition {
-            if let CaptureState::Converge { image, .. } =
+        if transition
+            && let CaptureState::Converge { image, .. } =
                 std::mem::replace(&mut self.capture, CaptureState::Idle)
             {
                 self.capture = CaptureState::Preview {
@@ -331,7 +331,6 @@ impl Engine {
                     shown_at: now,
                 };
             }
-        }
         true
     }
 

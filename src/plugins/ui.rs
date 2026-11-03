@@ -811,7 +811,7 @@ impl PluginManager {
                 x,
                 y + 48.0,
                 12.0,
-                clipped(&format!("{}  v{}", manifest.id, manifest.version,), columns),
+                clipped(&format!("{}  v{}", manifest.id, manifest.version), columns),
                 theme.muted,
             );
 

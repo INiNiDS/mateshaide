@@ -73,8 +73,8 @@ impl App {
     }
 
     fn handle_capture_key(event: &KeyEvent, engine: &mut Engine, window: &Window) {
-        if event.state == ElementState::Pressed {
-            if let PhysicalKey::Code(key) = event.physical_key {
+        if event.state == ElementState::Pressed
+            && let PhysicalKey::Code(key) = event.physical_key {
                 match key {
                     KeyCode::Escape => {
                         engine.dismiss_capture();
@@ -91,7 +91,6 @@ impl App {
                     _ => {}
                 }
             }
-        }
     }
 
     fn handle_capture_click(

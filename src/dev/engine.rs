@@ -21,11 +21,10 @@ impl Engine {
         self.draw.enabled = false;
         self.canvas.cancel_pan();
         self.test_spawner.toggle_mode(mode);
-        if mode == TestMode::Spawn && self.test_spawner.current.is_none() {
-            if let Some(kind) = self.shapes.kind("rect") {
+        if mode == TestMode::Spawn && self.test_spawner.current.is_none()
+            && let Some(kind) = self.shapes.kind("rect") {
                 self.test_spawner.select("rect", kind);
             }
-        }
     }
 
     pub fn toggle_test_spawn(&mut self) {

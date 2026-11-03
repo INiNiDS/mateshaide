@@ -75,7 +75,7 @@ fn fingerprint(files: &BTreeMap<String, Vec<u8>>) -> String {
     let digest = hash.finalize();
     let mut out = String::with_capacity(digest.len() * 2);
 
-    for byte in digest.iter() {
+    for byte in &digest {
         use std::fmt::Write as _;
         write!(&mut out, "{byte:02x}").expect("writing a digest to a String cannot fail");
     }
@@ -108,11 +108,10 @@ fn load_icon(files: &BTreeMap<String, Vec<u8>>, icon: &str) -> Option<image::Rgb
 fn plugin_roots() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from("plugins")];
 
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent() {
             roots.push(parent.join("plugins"));
         }
-    }
 
     roots
 }
@@ -185,7 +184,7 @@ fn read_package(root: &std::path::Path) -> Result<Package> {
         ensure!(depth < MAX_DIR_DEPTH, "package nesting too deep");
 
         let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<std::io::Result<_>>()?;
-        entries.sort_by_key(|e| e.file_name());
+        entries.sort_by_key(std::fs::DirEntry::file_name);
 
         for entry in entries {
             let name = entry.file_name();

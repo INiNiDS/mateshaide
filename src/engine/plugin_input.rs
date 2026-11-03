@@ -215,9 +215,7 @@ impl Engine {
     }
 
     fn handle_confirmation_keys(&mut self, event: &WindowEvent) -> Option<bool> {
-        if self.plugins.confirmation.is_none() {
-            return None;
-        }
+        self.plugins.confirmation.as_ref()?;
         if let WindowEvent::KeyboardInput { event, .. } = event {
             if event.state == ElementState::Pressed
                 && event.physical_key == PhysicalKey::Code(KeyCode::Escape)
@@ -529,16 +527,14 @@ impl Engine {
             "alt": mods.alt_key()
         }));
 
-        if !ctrl && !mods.alt_key() {
-            if let Some(text) = &event.text {
-                if !text.is_empty() && text.chars().all(|c| !c.is_control()) {
+        if !ctrl && !mods.alt_key()
+            && let Some(text) = &event.text
+                && !text.is_empty() && text.chars().all(|c| !c.is_control()) {
                     self.send_plugin_event(json!({
                         "name": "text",
                         "text": text.as_str()
                     }));
                 }
-            }
-        }
 
         handled
     }

@@ -89,6 +89,7 @@ impl PluginManager {
         }
     }
     // HIGH COMPLEXITY TODO
+    #[must_use]
     pub fn load() -> Self {
         let settings = super::platform::load_settings();
         let mut out = Self {
@@ -133,9 +134,11 @@ impl PluginManager {
             self.notice
         );
     }
+    #[must_use]
     pub fn active(&self, id: &str) -> bool {
         self.entries.get(id).is_some_and(|e| e.runtime.is_some())
     }
+    #[must_use]
     pub fn wants_text_input(&self) -> bool {
         self.selected.as_ref().is_some_and(|(p, t)| {
             self.focus.as_ref() == Some(p)
@@ -422,12 +425,12 @@ impl PluginManager {
                 break;
             }
         }
-        if overlay {
-            if let Some((id, _)) = self.selected.clone() {
-                if self.active(&id) {
+        if overlay
+            && let Some((id, _)) = self.selected.clone()
+                && self.active(&id) {
                     let context = json!({"nodes":nodes.iter().filter(|n|n.owner==id).collect::<Vec<_>>(),"focused":self.focus.as_deref()==Some(id.as_str()),"zoom":zoom});
-                    if let Some(r) = self.entries.get_mut(&id).and_then(|e| e.runtime.as_mut()) {
-                        if r.has("overlay") {
+                    if let Some(r) = self.entries.get_mut(&id).and_then(|e| e.runtime.as_mut())
+                        && r.has("overlay") {
                             match r.pure_call(
                                 "overlay",
                                 vec![json_value(&context).unwrap_or(Value::Null)],
@@ -440,10 +443,7 @@ impl PluginManager {
                                 Err(e) => errors.push(e.to_string()),
                             }
                         }
-                    }
                 }
-            }
-        }
         if let Some(error) = errors.first() {
             self.notice = format!("Render: {error}");
         }
@@ -688,11 +688,10 @@ impl PluginManager {
         self.group_recorded = false;
         for id in plan.iter().rev() {
             if let Some(e) = self.entries.get_mut(id) {
-                if let Some(mut r) = e.runtime.take() {
-                    if r.has("deactivate") {
+                if let Some(mut r) = e.runtime.take()
+                    && r.has("deactivate") {
                         let _ = r.call("deactivate", vec![]);
                     }
-                }
                 e.contributions = Contributions::default();
             }
             if self.selected.as_ref().is_some_and(|(p, _)| p == id) {

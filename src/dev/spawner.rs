@@ -162,9 +162,9 @@ impl TestSpawner {
                 self.erase_at_cursor(canvas, registry);
             }
             TestMode::Select => {
-                if let Some(index) = self.selected {
-                    if let Some(original) = canvas.instances.get(index).copied() {
-                        if let Some(corner) = self.handle_at(canvas, registry, screen) {
+                if let Some(index) = self.selected
+                    && let Some(original) = canvas.instances.get(index).copied()
+                        && let Some(corner) = self.handle_at(canvas, registry, screen) {
                             self.drag = Some(TestDrag::Resize {
                                 index,
                                 original,
@@ -174,8 +174,6 @@ impl TestSpawner {
                             });
                             return true;
                         }
-                    }
-                }
                 self.selected = geometry::pick(canvas, world, registry);
                 if let Some(index) = self.selected {
                     self.drag = Some(TestDrag::Move {
@@ -278,13 +276,12 @@ impl TestSpawner {
             | TestDrag::Resize {
                 index, original, ..
             } => {
-                if let Some(result) = canvas.instances.get(index).copied() {
-                    if result != original {
+                if let Some(result) = canvas.instances.get(index).copied()
+                    && result != original {
                         canvas.instances[index] = original;
                         canvas.record_history();
                         canvas.instances[index] = result;
                     }
-                }
             }
         }
     }

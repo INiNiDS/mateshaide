@@ -16,8 +16,8 @@ pub(crate) fn build_instances(
         preview.color = preview.color.with_alpha(preview.color.a * 0.35);
         result.push(preview);
     }
-    if tool.mode == Some(TestMode::Select) {
-        if let Some(shape) = tool
+    if tool.mode == Some(TestMode::Select)
+        && let Some(shape) = tool
             .selected()
             .and_then(|index| canvas.instances.get(index))
         {
@@ -43,7 +43,6 @@ pub(crate) fn build_instances(
                 }
             }
         }
-    }
     debug_assert!(result.len() <= INSTANCES_CAP);
     result
 }

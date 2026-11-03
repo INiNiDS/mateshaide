@@ -98,7 +98,7 @@ fn update_native_ime(enabled: bool, x: f32, y: f32) {
         });
 
         window.set_ime_cursor_area(
-            winit::dpi::PhysicalPosition::new(x as f64, y as f64),
+            winit::dpi::PhysicalPosition::new(f64::from(x), f64::from(y)),
             winit::dpi::PhysicalSize::new(2u32, 24u32),
         );
     });
@@ -116,6 +116,7 @@ fn push(request: Request) {
     REQUESTS.with(|queue| queue.borrow_mut().push(request));
 }
 
+#[must_use]
 pub fn drain() -> Vec<Request> {
     #[cfg(target_arch = "wasm32")]
     drain_browser_requests();
@@ -168,6 +169,7 @@ fn push_bytes_request(value: serde_json::Value, constructor: fn(Vec<u8>) -> Requ
     }
 }
 
+#[must_use]
 pub fn load_settings() -> Settings {
     let data = read_settings_data();
 
