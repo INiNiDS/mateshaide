@@ -135,7 +135,7 @@ fn layout(fonts: &mut glyphon::FontSystem, text: &str, size: f32) -> Value {
         lines.push(empty_line_json());
     }
 
-    layout_json(width, size, &carets, lines)
+    layout_json(width, size, &carets, &lines)
 }
 
 fn default_caret() -> Value {
@@ -150,7 +150,7 @@ fn line_json(start: usize, end: usize, run: &LayoutRun) -> Value {
     json!({"start": start, "end": end, "y": run.line_top, "width": run.line_w})
 }
 
-fn layout_json(width: f32, size: f32, carets: &[Value], lines: Vec<Value>) -> Value {
+fn layout_json(width: f32, size: f32, carets: &[Value], lines: &[Value]) -> Value {
     json!({
         "width": width,
         "height": lines.len() as f32 * size * LINE_HEIGHT_FACTOR,

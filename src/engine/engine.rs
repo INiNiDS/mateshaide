@@ -467,7 +467,7 @@ impl Engine {
                     return true;
                 }
                 Some(Ok(rgba)) => {
-                    if let Err(e) = job.builder.add_page(rgba) {
+                    if let Err(e) = job.builder.add_page(&rgba) {
                         tracing::error!("pdf page failed: {e}");
                         return true;
                     }

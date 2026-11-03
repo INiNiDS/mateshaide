@@ -14,7 +14,9 @@ const MAX_DOCUMENT_SIZE: usize = 32 * 1024 * 1024;
 const MAX_PACKAGE_ARCHIVE_SIZE: usize = 8 * 1024 * 1024;
 const MAX_PACKAGE_FILE_SIZE: usize = 2 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: usize = 512;
+#[cfg(target_arch = "wasm32")]
 const MAX_BROWSER_PACKAGES: usize = 256;
+#[cfg(target_arch = "wasm32")]
 const SETTINGS_STORAGE_KEY: &str = "matesha.plugins.v1";
 
 thread_local! {

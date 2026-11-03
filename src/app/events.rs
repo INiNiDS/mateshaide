@@ -66,7 +66,7 @@ impl App {
             }
 
             winit::event::WindowEvent::MouseInput { state, button, .. } => {
-                Self::handle_capture_click(state, button, engine, window);
+                Self::handle_capture_click(*state, *button, engine, window);
             }
             _ => {}
         }
@@ -94,12 +94,12 @@ impl App {
     }
 
     fn handle_capture_click(
-        state: &ElementState,
-        button: &MouseButton,
+        state: ElementState,
+        button: MouseButton,
         engine: &mut Engine,
         window: &Window,
     ) {
-        if *state == ElementState::Pressed && *button == MouseButton::Left {
+        if state == ElementState::Pressed && button == MouseButton::Left {
             let cursor = engine.capture_cursor;
             match engine.check_button_click(cursor) {
                 Some(ButtonAction::Save) => {

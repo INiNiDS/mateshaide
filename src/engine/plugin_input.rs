@@ -545,8 +545,8 @@ impl Engine {
 
         for request in requests {
             match request {
-                plugins::platform::Request::Document(bytes) => self.open_plugin_document(bytes),
-                plugins::platform::Request::Package(bytes) => self.install_plugin_package(bytes),
+                plugins::platform::Request::Document(bytes) => self.open_plugin_document(&bytes),
+                plugins::platform::Request::Package(bytes) => self.install_plugin_package(&bytes),
                 plugins::platform::Request::Error(error) => self.plugins.notice = error,
                 plugins::platform::Request::Event(event) => self.handle_plugin_message(event),
             }
@@ -557,10 +557,10 @@ impl Engine {
         changed
     }
 
-    fn open_plugin_document(&mut self, bytes: Vec<u8>) {
+    fn open_plugin_document(&mut self, bytes: &[u8]) {
         self.clear_plugin_tool();
 
-        match self.canvas.load_document_bytes(&bytes) {
+        match self.canvas.load_document_bytes(bytes) {
             Ok(()) => {
                 self.plugins.document_changed(&mut self.canvas);
                 self.plugins.notice = "Document opened".into();
@@ -571,8 +571,8 @@ impl Engine {
         }
     }
 
-    fn install_plugin_package(&mut self, bytes: Vec<u8>) {
-        match plugins::platform::install_zip(&bytes) {
+    fn install_plugin_package(&mut self, bytes: &[u8]) {
+        match plugins::platform::install_zip(bytes) {
             Ok(id) => {
                 self.clear_plugin_tool();
                 self.plugins.rescan();

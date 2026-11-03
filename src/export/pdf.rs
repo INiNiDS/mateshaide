@@ -60,7 +60,7 @@ impl PdfBuilder {
         }
     }
 
-    pub fn add_page(&mut self, rgba: Vec<u8>) -> Result<(), ExportError> {
+    pub fn add_page(&mut self, rgba: &[u8]) -> Result<(), ExportError> {
         if self.pages.len() >= MAX_PAGES {
             return Err(ExportError::TooManyPages(self.pages.len() + 1));
         }
@@ -101,5 +101,11 @@ impl PdfBuilder {
 
         let mut warnings = Vec::new();
         Ok(self.doc.save(&PdfSaveOptions::default(), &mut warnings))
+    }
+}
+
+impl Default for PdfBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
