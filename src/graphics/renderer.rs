@@ -26,6 +26,20 @@ pub struct PendingReadback {
     rx: mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
 }
 
+pub struct FrameInput<'a> {
+    pub camera: &'a Camera,
+    pub instances: &'a [ShapeInstance],
+    pub texts: &'a [CanvasText],
+    pub shapes: &'a ShapeRegistry,
+    pub capture: CaptureOverlayParams<'a>,
+    pub overlay_texts: &'a [CanvasText],
+    pub plugin_ui: &'a crate::plugins::UiFrame,
+    #[cfg(debug_assertions)]
+    pub swatch: Option<Color>,
+    #[cfg(debug_assertions)]
+    pub dev_overlay: &'a [ShapeInstance],
+}
+
 pub struct Renderer {
     window: Arc<Window>,
     instance: wgpu::Instance,
@@ -304,73 +318,17 @@ impl Renderer {
         self.size
     }
 
-    #[allow(clippy::too_many_arguments)]
-    // Oops HIGH COMPLEXITY TODO
-    pub fn redraw(
-        &mut self,
-        camera: &Camera,
-        instances: &[ShapeInstance],
-        texts: &[CanvasText],
-        shapes: &ShapeRegistry,
-        #[cfg(debug_assertions)] swatch: Option<Color>,
-        capture: CaptureOverlayParams<'_>,
-        overlay_texts: &[CanvasText],
-        #[cfg(debug_assertions)] dev_overlay: &[ShapeInstance],
-        plugin_ui: &crate::plugins::UiFrame,
-    ) {
-        self.update_pipeline(shapes);
+    pub fn redraw(&mut self, frame: FrameInput<'_>) {
+        self.update_pipeline(frame.shapes);
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
-            bytemuck::cast_slice(&[camera.uniform()]),
+            bytemuck::cast_slice(&[frame.camera.uniform()]),
         );
 
-        if instances.len() > self.instance_capacity {
-            self.instance_capacity = instances.len().next_power_of_two();
-            self.instance_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Instance Resize"),
-                size: (self.instance_capacity * size_of::<ShapeInstance>()) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-        }
-        if !instances.is_empty() {
-            self.queue
-                .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(instances));
-        }
+        self.upload_instances(&frame);
+        self.upload_texts(&frame);
 
-        self.text.prepare(&self.device, &self.queue, camera, texts);
-        if !overlay_texts.is_empty() {
-            self.overlay_text
-                .prepare(&self.device, &self.queue, camera, overlay_texts);
-        }
-
-        if plugin_ui.shapes.len() > self.plugin_capacity {
-            self.plugin_capacity = plugin_ui.shapes.len().next_power_of_two();
-            self.plugin_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Plugin UI grow"),
-                size: (self.plugin_capacity * size_of::<ShapeInstance>()) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-        }
-        if !plugin_ui.shapes.is_empty() {
-            self.queue.write_buffer(
-                &self.plugin_buffer,
-                0,
-                bytemuck::cast_slice(&plugin_ui.shapes),
-            );
-        }
-        if !plugin_ui.texts.is_empty() {
-            self.plugin_text
-                .prepare(&self.device, &self.queue, camera, &plugin_ui.texts);
-        }
-        self.ui_images.prepare(
-            &self.device,
-            &self.queue,
-            [camera.screen_size.x, camera.screen_size.y],
-            &plugin_ui.images,
-        );
         let output = match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(t) => t,
             CurrentSurfaceTexture::Suboptimal(t) => {
@@ -403,83 +361,189 @@ impl Renderer {
                 label: Some("Encoder"),
             });
 
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Main"),
-                color_attachments: &[Some(Self::clear(&view, plugin_ui.theme.canvas))],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
+        self.encode_passes(frame, &view, &mut encoder);
+
+        self.queue.submit(Some(encoder.finish()));
+        self.queue.present(output);
+        self.text.trim();
+        self.overlay_text.trim();
+        self.plugin_text.trim();
+    }
+
+    fn upload_instances(&mut self, frame: &FrameInput<'_>) {
+        if frame.instances.len() > self.instance_capacity {
+            self.instance_capacity = frame.instances.len().next_power_of_two();
+            self.instance_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Instance Resize"),
+                size: (self.instance_capacity * size_of::<ShapeInstance>()) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
             });
+        }
+        if !frame.instances.is_empty() {
+            self.queue
+                .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(frame.instances));
+        }
 
-            let background_count = plugin_ui.background_shape_count.min(plugin_ui.shapes.len());
-
-            self.render_pipeline.draw_range(
-                &mut pass,
-                &self.overlay_bind_group,
+        if frame.plugin_ui.shapes.len() > self.plugin_capacity {
+            self.plugin_capacity = frame.plugin_ui.shapes.len().next_power_of_two();
+            self.plugin_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Plugin UI grow"),
+                size: (self.plugin_capacity * size_of::<ShapeInstance>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        if !frame.plugin_ui.shapes.is_empty() {
+            self.queue.write_buffer(
                 &self.plugin_buffer,
-                0..background_count as u32,
+                0,
+                bytemuck::cast_slice(&frame.plugin_ui.shapes),
             );
-
-            self.render_pipeline.draw(
-                &mut pass,
-                &self.camera_bind_group,
-                &self.instance_buffer,
-                instances.len() as u32,
-            );
-
-            self.text.render(&mut pass);
         }
+    }
+
+    fn upload_texts(&mut self, frame: &FrameInput<'_>) {
+        self.text
+            .prepare(&self.device, &self.queue, frame.camera, frame.texts);
+        if !frame.overlay_texts.is_empty() {
+            self.overlay_text
+                .prepare(&self.device, &self.queue, frame.camera, frame.overlay_texts);
+        }
+        if !frame.plugin_ui.texts.is_empty() {
+            self.plugin_text
+                .prepare(&self.device, &self.queue, frame.camera, &frame.plugin_ui.texts);
+        }
+        self.ui_images.prepare(
+            &self.device,
+            &self.queue,
+            [frame.camera.screen_size.x, frame.camera.screen_size.y],
+            &frame.plugin_ui.images,
+        );
+    }
+
+    fn encode_passes(
+        &mut self,
+        frame: FrameInput<'_>,
+        view: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
+        self.encode_main_pass(encoder, view, frame.instances, frame.plugin_ui);
 
         #[cfg(debug_assertions)]
-        if !dev_overlay.is_empty() {
-            debug_assert!(dev_overlay.len() <= crate::dev::overlay::INSTANCES_CAP);
-            self.queue.write_buffer(
-                &self.dev_instance_buffer,
-                0,
-                bytemuck::cast_slice(dev_overlay),
-            );
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Dev Editor"),
-                color_attachments: &[Some(Self::load(&view))],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            self.render_pipeline.draw(
-                &mut pass,
-                &self.camera_bind_group,
-                &self.dev_instance_buffer,
-                dev_overlay.len() as u32,
-            );
-        }
+        self.encode_dev_pass(encoder, view, frame.dev_overlay);
 
         #[cfg(debug_assertions)]
-        if let Some(color) = swatch {
-            let overlay = build_swatch_instances(color, self.size.width, self.size.height);
-            self.queue.write_buffer(
-                &self.overlay_instance_buffer,
-                0,
-                bytemuck::cast_slice(&overlay),
-            );
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Swatch"),
-                color_attachments: &[Some(Self::load(&view))],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            self.render_pipeline.draw(
-                &mut pass,
-                &self.overlay_bind_group,
-                &self.overlay_instance_buffer,
-                overlay.len() as u32,
-            );
-        }
+        self.encode_swatch_pass(encoder, view, frame.swatch);
 
+        self.encode_capture_pass(encoder, view, frame.capture);
+        self.encode_overlay_text_pass(encoder, view, frame.overlay_texts);
+        self.encode_plugin_ui_pass(encoder, view, frame.plugin_ui);
+    }
+
+    fn encode_main_pass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        instances: &[ShapeInstance],
+        plugin_ui: &crate::plugins::UiFrame,
+    ) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Main"),
+            color_attachments: &[Some(Self::clear(view, plugin_ui.theme.canvas))],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+
+        let background_count = plugin_ui.background_shape_count.min(plugin_ui.shapes.len());
+
+        self.render_pipeline.draw_range(
+            &mut pass,
+            &self.overlay_bind_group,
+            &self.plugin_buffer,
+            0..background_count as u32,
+        );
+
+        self.render_pipeline.draw(
+            &mut pass,
+            &self.camera_bind_group,
+            &self.instance_buffer,
+            instances.len() as u32,
+        );
+
+        self.text.render(&mut pass);
+    }
+
+    #[cfg(debug_assertions)]
+    fn encode_dev_pass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        dev_overlay: &[ShapeInstance],
+    ) {
+        if dev_overlay.is_empty() {
+            return;
+        }
+        debug_assert!(dev_overlay.len() <= crate::dev::overlay::INSTANCES_CAP);
+        self.queue.write_buffer(
+            &self.dev_instance_buffer,
+            0,
+            bytemuck::cast_slice(dev_overlay),
+        );
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Dev Editor"),
+            color_attachments: &[Some(Self::load(view))],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        self.render_pipeline.draw(
+            &mut pass,
+            &self.camera_bind_group,
+            &self.dev_instance_buffer,
+            dev_overlay.len() as u32,
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    fn encode_swatch_pass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        swatch: Option<Color>,
+    ) {
+        let Some(color) = swatch else { return; };
+        let overlay = build_swatch_instances(color, self.size.width, self.size.height);
+        self.queue.write_buffer(
+            &self.overlay_instance_buffer,
+            0,
+            bytemuck::cast_slice(&overlay),
+        );
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Swatch"),
+            color_attachments: &[Some(Self::load(view))],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        self.render_pipeline.draw(
+            &mut pass,
+            &self.overlay_bind_group,
+            &self.overlay_instance_buffer,
+            overlay.len() as u32,
+        );
+    }
+
+    fn encode_capture_pass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        capture: CaptureOverlayParams<'_>,
+    ) {
         match capture {
             CaptureOverlayParams::None => {
                 self.capture_overlay.clear();
@@ -489,7 +553,7 @@ impl Renderer {
                 let intensity = (0.4 + 0.6 * progress * progress).min(1.0);
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Glow"),
-                    color_attachments: &[Some(Self::load(&view))],
+                    color_attachments: &[Some(Self::load(view))],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
@@ -530,7 +594,7 @@ impl Renderer {
                 }
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Preview"),
-                    color_attachments: &[Some(Self::load(&view))],
+                    color_attachments: &[Some(Self::load(view))],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
@@ -554,67 +618,79 @@ impl Renderer {
                 }
             }
         }
+    }
 
-        if !overlay_texts.is_empty() {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Overlay Text"),
-                color_attachments: &[Some(Self::load(&view))],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            self.overlay_text.render(&mut pass);
+    fn encode_overlay_text_pass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        overlay_texts: &[CanvasText],
+    ) {
+        if overlay_texts.is_empty() {
+            return;
+        }
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Overlay Text"),
+            color_attachments: &[Some(Self::load(view))],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        self.overlay_text.render(&mut pass);
+    }
+
+    fn encode_plugin_ui_pass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        plugin_ui: &crate::plugins::UiFrame,
+    ) {
+        if plugin_ui.shapes.is_empty()
+            && plugin_ui.texts.is_empty()
+            && plugin_ui.images.is_empty()
+        {
+            return;
         }
 
-        if !plugin_ui.shapes.is_empty()
-            || !plugin_ui.texts.is_empty()
-            || !plugin_ui.images.is_empty()
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Plugin UI"),
-                color_attachments: &[Some(Self::load(&view))],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Plugin UI"),
+            color_attachments: &[Some(Self::load(view))],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
 
-            let shape_count = plugin_ui.shapes.len();
+        let shape_count = plugin_ui.shapes.len();
 
-            let mut shape_start = plugin_ui.background_shape_count.min(shape_count);
+        let mut shape_start = plugin_ui.background_shape_count.min(shape_count);
 
-            for (index, image) in plugin_ui.images.iter().enumerate() {
-                let split = image.after_shapes.min(shape_count).max(shape_start);
-
-                self.render_pipeline.draw_range(
-                    &mut pass,
-                    &self.overlay_bind_group,
-                    &self.plugin_buffer,
-                    shape_start as u32..split as u32,
-                );
-
-                self.ui_images.draw(&mut pass, index, image.kind);
-
-                shape_start = split;
-            }
+        for (index, image) in plugin_ui.images.iter().enumerate() {
+            let split = image.after_shapes.min(shape_count).max(shape_start);
 
             self.render_pipeline.draw_range(
                 &mut pass,
                 &self.overlay_bind_group,
                 &self.plugin_buffer,
-                shape_start as u32..shape_count as u32,
+                shape_start as u32..split as u32,
             );
 
-            if !plugin_ui.texts.is_empty() {
-                self.plugin_text.render(&mut pass);
-            }
+            self.ui_images.draw(&mut pass, index, image.kind);
+
+            shape_start = split;
         }
-        self.queue.submit(Some(encoder.finish()));
-        self.queue.present(output);
-        self.text.trim();
-        self.overlay_text.trim();
-        self.plugin_text.trim();
+
+        self.render_pipeline.draw_range(
+            &mut pass,
+            &self.overlay_bind_group,
+            &self.plugin_buffer,
+            shape_start as u32..shape_count as u32,
+        );
+
+        if !plugin_ui.texts.is_empty() {
+            self.plugin_text.render(&mut pass);
+        }
     }
 
     pub fn start_export(
