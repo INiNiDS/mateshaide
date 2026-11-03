@@ -11,6 +11,15 @@ use std::collections::BTreeSet;
 pub(super) const JSON_SOURCE: &str = include_str!("json.lua");
 pub(super) const BOOTSTRAP_SOURCE: &str = include_str!("bootstrap.lua");
 
+const MAX_STATE_BYTES: usize = 1024 * 1024;
+const MAX_CALLBACK_INPUT_BYTES: usize = 16 * 1024 * 1024;
+const MAX_CALLBACK_OUTPUT_BYTES: usize = 1024 * 1024;
+const MAX_TOOLS: usize = 24;
+const MAX_COMMANDS: usize = 24;
+const MAX_SERVICES: usize = 32;
+const MAX_OBJECT_TYPES: usize = 32;
+const MAX_LABEL_BYTES: usize = 80;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ButtonStyle {
@@ -33,7 +42,7 @@ impl ButtonStyle {
             ensure!(
                 color
                     .iter()
-                    .all(|value| { value.is_finite() && (0.0..=1.0).contains(value) }),
+                    .all(|value| value.is_finite() && (0.0..=1.0).contains(value)),
                 "button color must contain RGBA values between 0 and 1"
             );
         }
@@ -100,16 +109,20 @@ impl Runtime {
 
     pub fn call(&mut self, name: &str, args: Vec<Value>) -> Result<Value> {
         let state = serde_json::to_string(&self.state)?;
-        ensure!(state.len() <= 1048576, "plugin state limit");
+        ensure!(state.len() <= MAX_STATE_BYTES, "plugin state limit");
+
         let args = serde_json::to_string(&args)?;
-        ensure!(args.len() <= 16777216, "callback input limit");
+        ensure!(args.len() <= MAX_CALLBACK_INPUT_BYTES, "callback input limit");
+
         let out = self
             .backend
             .invoke(&self.sources, &self.entry, &state, name, &args)?;
-        ensure!(out.len() <= 1048576, "callback output limit");
+        ensure!(out.len() <= MAX_CALLBACK_OUTPUT_BYTES, "callback output limit");
+
         let out: Value = serde_json::from_str(&out)?;
         let next = out.get("state").context("missing plugin state")?.clone();
         ensure!(next.is_object(), "plugin state must remain a JSON object");
+
         let names = out["callbacks"]
             .as_array()
             .context("missing callback metadata")?;
@@ -118,6 +131,7 @@ impl Runtime {
             .filter_map(Value::as_str)
             .map(str::to_owned)
             .collect();
+
         self.state = next;
         Ok(out.get("result").cloned().unwrap_or(Value::Null))
     }
@@ -129,58 +143,106 @@ impl Runtime {
         out
     }
 
-    // HIGH COMPLEXITY TODO
     pub fn activate(&mut self) -> Result<Contributions> {
-        let c: Contributions = serde_json::from_value(self.call("activate", vec![])?)?;
-        for style in c
-            .tools
-            .iter()
-            .map(|tool| &tool.style)
-            .chain(c.commands.iter().map(|command| &command.style))
-        {
-            style.validate()?;
-        }
-        ensure!(
-            c.tools.len() <= 24
-                && c.services.len() <= 32
-                && c.object_types.len() <= 32
-                && c.commands.len() <= 24,
-            "contribution limit"
-        );
-        for names in [
-            c.tools.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
-            c.commands.iter().map(|t| t.id.as_str()).collect(),
-            c.services.iter().map(String::as_str).collect(),
-            c.object_types.iter().map(String::as_str).collect(),
-        ] {
-            let mut seen = BTreeSet::new();
-            for id in names {
-                ensure!(
-                    valid_id(id) && seen.insert(id),
-                    "invalid or duplicate contribution"
-                );
-            }
-        }
-        for label in c
-            .tools
-            .iter()
-            .map(|t| &t.label)
-            .chain(c.commands.iter().map(|t| &t.label))
-        {
-            ensure!(label.len() <= 80, "label limit");
-        }
+        let contributions: Contributions = serde_json::from_value(self.call("activate", vec![])?)?;
+
+        validate_styles(&contributions)?;
+        validate_limits(&contributions)?;
+        validate_ids(&contributions)?;
+        validate_labels(&contributions)?;
+        self.require_callbacks(&contributions)?;
+
+        Ok(contributions)
+    }
+
+    fn require_callbacks(&self, contributions: &Contributions) -> Result<()> {
         ensure!(self.has("handle"), "missing handle(state,event,context)");
-        if !c.object_types.is_empty() {
+
+        if !contributions.object_types.is_empty() {
             ensure!(self.has("render"), "missing render(state,node,context)");
         }
-        if !c.services.is_empty() {
+
+        if !contributions.services.is_empty() {
             ensure!(
                 self.has("service"),
                 "missing service(state,name,args,context)"
             );
         }
-        Ok(c)
+
+        Ok(())
     }
+}
+
+fn validate_styles(contributions: &Contributions) -> Result<()> {
+    for style in contributions
+        .tools
+        .iter()
+        .map(|tool| &tool.style)
+        .chain(contributions.commands.iter().map(|command| &command.style))
+    {
+        style.validate()?;
+    }
+
+    Ok(())
+}
+
+fn validate_limits(contributions: &Contributions) -> Result<()> {
+    ensure!(
+        contributions.tools.len() <= MAX_TOOLS
+            && contributions.services.len() <= MAX_SERVICES
+            && contributions.object_types.len() <= MAX_OBJECT_TYPES
+            && contributions.commands.len() <= MAX_COMMANDS,
+        "contribution limit"
+    );
+
+    Ok(())
+}
+
+fn validate_ids(contributions: &Contributions) -> Result<()> {
+    let groups: [Vec<&str>; 4] = [
+        contributions.tools.iter().map(|t| t.id.as_str()).collect(),
+        contributions
+            .commands
+            .iter()
+            .map(|command| command.id.as_str())
+            .collect(),
+        contributions
+            .services
+            .iter()
+            .map(String::as_str)
+            .collect(),
+        contributions
+            .object_types
+            .iter()
+            .map(String::as_str)
+            .collect(),
+    ];
+
+    for ids in groups {
+        let mut seen = BTreeSet::new();
+
+        for id in ids {
+            ensure!(
+                valid_id(id) && seen.insert(id),
+                "invalid or duplicate contribution"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_labels(contributions: &Contributions) -> Result<()> {
+    for label in contributions
+        .tools
+        .iter()
+        .map(|tool| &tool.label)
+        .chain(contributions.commands.iter().map(|command| &command.label))
+    {
+        ensure!(label.len() <= MAX_LABEL_BYTES, "label limit");
+    }
+
+    Ok(())
 }
 
 pub fn json_value(value: &impl Serialize) -> Result<Value> {
