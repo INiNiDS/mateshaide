@@ -16,6 +16,32 @@ const CARD_GAP: f32 = 20.0;
 
 type Rect = [f32; 4];
 
+#[derive(Clone, Copy)]
+struct CardSlot {
+    left: f32,
+    right: f32,
+    y: f32,
+    screen: [f32; 2],
+}
+
+impl CardSlot {
+    fn icon_size(self) -> f32 {
+        if self.right - self.left >= 600.0 {
+            96.0
+        } else {
+            64.0
+        }
+    }
+
+    fn text_x(self) -> f32 {
+        self.left + self.icon_size() + 44.0
+    }
+
+    fn text_columns(self) -> usize {
+        ((self.right - self.text_x() - 20.0) / 8.0).max(1.0) as usize
+    }
+}
+
 #[derive(Clone)]
 pub enum UiAction {
     TogglePage,
@@ -72,88 +98,113 @@ fn inset_buttons(panel: Rect, widths: &[f32], lead: f32) -> Vec<Rect> {
         .collect()
 }
 
-// HIGH COMPLEXITY TODO
+fn fit_button_widths(widths: &[f32], available: f32, lead: f32) -> Vec<f32> {
+    let count = widths.len().max(1) as f32;
+    let gaps = widths.len().saturating_sub(1) as f32 * BUTTON_GAP;
+    let max_width = ((available - 2.0 * PANEL_PAD - gaps - lead) / count).max(1.0);
+
+    widths.iter().map(|width| width.min(max_width)).collect()
+}
+
+fn panel_width(widths: &[f32], lead: f32) -> f32 {
+    widths.iter().sum::<f32>()
+        + widths.len().saturating_sub(1) as f32 * BUTTON_GAP
+        + 2.0 * PANEL_PAD
+        + lead
+}
+
+fn tool_layout(
+    width: f32,
+    available: f32,
+    tool_widths: &[f32],
+    system: Rect,
+    themes: Rect,
+    top_row: bool,
+    bottom: f32,
+) -> (Option<Rect>, Vec<Rect>, f32) {
+    if tool_widths.is_empty() {
+        return (None, Vec::new(), bottom);
+    }
+
+    let natural = panel_width(tool_widths, 0.0);
+    let panel_width = natural.min(available);
+    let left = (width - panel_width) * 0.5;
+    let fits_top =
+        top_row && left >= system[2] + PANEL_GAP && left + panel_width <= themes[0] - PANEL_GAP;
+    let top = if fits_top {
+        UI_MARGIN
+    } else {
+        bottom + PANEL_GAP
+    };
+
+    let mut buttons = Vec::with_capacity(tool_widths.len());
+    let mut x = left + PANEL_PAD;
+    let mut y = top + PANEL_PAD;
+
+    for &button_width in tool_widths {
+        let button_width = button_width.min((panel_width - 2.0 * PANEL_PAD).max(1.0));
+
+        if x > left + PANEL_PAD && x + button_width > left + panel_width - PANEL_PAD + 0.01 {
+            x = left + PANEL_PAD;
+            y += BUTTON_HEIGHT + BUTTON_GAP;
+        }
+
+        buttons.push([x, y, x + button_width, y + BUTTON_HEIGHT]);
+        x += button_width + BUTTON_GAP;
+    }
+
+    let panel = [left, top, left + panel_width, y + BUTTON_HEIGHT + PANEL_PAD];
+
+    (Some(panel), buttons, bottom.max(panel[3]))
+}
+
 fn top_layout(width: f32, tool_widths: &[f32]) -> TopLayout {
     let available = (width - 2.0 * UI_MARGIN).max(1.0);
     let brand = width >= 700.0;
     let lead = if brand { 106.0 } else { 0.0 };
 
-    let system_widths = [70.0_f32, 54.0, 54.0]
-        .map(|v| v.min(((available - 2.0 * PANEL_PAD - 2.0 * BUTTON_GAP - lead) / 3.0).max(1.0)));
+    let system_widths = fit_button_widths(&[70.0, 54.0, 54.0], available, lead);
+    let system = [
+        UI_MARGIN,
+        UI_MARGIN,
+        UI_MARGIN + panel_width(&system_widths, lead),
+        UI_MARGIN + 50.0,
+    ];
 
-    let sw = system_widths.iter().sum::<f32>() + 2.0 * BUTTON_GAP + 2.0 * PANEL_PAD + lead;
-
-    let system = [UI_MARGIN, UI_MARGIN, UI_MARGIN + sw, UI_MARGIN + 50.0];
-
-    let theme_widths = [88.0_f32, 132.0]
-        .map(|v| v.min(((available - 2.0 * PANEL_PAD - BUTTON_GAP) / 2.0).max(1.0)));
-
-    let tw = theme_widths.iter().sum::<f32>() + BUTTON_GAP + 2.0 * PANEL_PAD;
-
-    let ty = if sw + tw + PANEL_GAP <= available {
+    let theme_widths = fit_button_widths(&[88.0, 132.0], available, 0.0);
+    let theme_width = panel_width(&theme_widths, 0.0);
+    let theme_top = if system[2] + theme_width + PANEL_GAP <= width - UI_MARGIN {
         UI_MARGIN
     } else {
         system[3] + PANEL_GAP
     };
+    let themes = [
+        width - UI_MARGIN - theme_width,
+        theme_top,
+        width - UI_MARGIN,
+        theme_top + 50.0,
+    ];
 
-    let themes = [width - UI_MARGIN - tw, ty, width - UI_MARGIN, ty + 50.0];
+    let initial_bottom = system[3].max(themes[3]);
+    let (tools, tool_buttons, bottom) = tool_layout(
+        width,
+        available,
+        tool_widths,
+        system,
+        themes,
+        theme_top == UI_MARGIN,
+        initial_bottom,
+    );
 
-    let mut bottom = system[3].max(themes[3]);
-    let mut tool_buttons = Vec::new();
-
-    let tools = if tool_widths.is_empty() {
-        None
-    } else {
-        let natural = tool_widths.iter().sum::<f32>()
-            + tool_widths.len().saturating_sub(1) as f32 * BUTTON_GAP
-            + 2.0 * PANEL_PAD;
-
-        let panel_width = natural.min(available);
-        let centered_left = (width - panel_width) * 0.5;
-
-        let fits_top = ty == UI_MARGIN
-            && centered_left >= system[2] + PANEL_GAP
-            && centered_left + panel_width <= themes[0] - PANEL_GAP;
-
-        let y = if fits_top {
-            UI_MARGIN
-        } else {
-            bottom + PANEL_GAP
-        };
-
-        let left = centered_left;
-        let mut x = left + PANEL_PAD;
-        let mut by = y + PANEL_PAD;
-
-        for &button_width in tool_widths {
-            let bw = button_width.min((panel_width - 2.0 * PANEL_PAD).max(1.0));
-
-            if x > left + PANEL_PAD && x + bw > left + panel_width - PANEL_PAD + 0.01 {
-                x = left + PANEL_PAD;
-                by += BUTTON_HEIGHT + BUTTON_GAP;
-            }
-
-            tool_buttons.push([x, by, x + bw, by + BUTTON_HEIGHT]);
-
-            x += bw + BUTTON_GAP;
-        }
-
-        let panel = [left, y, left + panel_width, by + BUTTON_HEIGHT + PANEL_PAD];
-
-        bottom = bottom.max(panel[3]);
-
-        Some(panel)
-    };
-
-    let sb = inset_buttons(system, &system_widths, lead);
-    let tb = inset_buttons(themes, &theme_widths, 0.0);
+    let system_buttons = inset_buttons(system, &system_widths, lead);
+    let theme_buttons = inset_buttons(themes, &theme_widths, 0.0);
 
     TopLayout {
         system,
-        system_buttons: [sb[0], sb[1], sb[2]],
+        system_buttons: [system_buttons[0], system_buttons[1], system_buttons[2]],
         brand,
         themes,
-        theme_buttons: [tb[0], tb[1]],
+        theme_buttons: [theme_buttons[0], theme_buttons[1]],
         tools,
         tool_buttons,
         bottom,
@@ -713,7 +764,200 @@ impl PluginManager {
         );
     }
 
-    // HIGH COMPLEXITY TODO
+    fn draw_plugin_card(
+        &self,
+        body: &mut UiFrame,
+        camera: &Camera,
+        plugin_id: &str,
+        slot: CardSlot,
+    ) {
+        if !self.entries.contains_key(plugin_id) {
+            return;
+        }
+
+        self.draw_card_frame(body, slot);
+        self.draw_card_icon(body, plugin_id, slot);
+        self.draw_card_details(body, camera, plugin_id, slot);
+        self.draw_card_actions(body, camera, plugin_id, slot);
+    }
+
+    fn draw_card_frame(&self, body: &mut UiFrame, slot: CardSlot) {
+        let theme = self.settings.appearance.theme();
+        let CardSlot {
+            left,
+            right,
+            y,
+            screen: [w, h],
+        } = slot;
+        let icon = slot.icon_size();
+
+        body.rect([left, y, right, y + CARD_HEIGHT], theme.border, w, h);
+        body.rect(
+            [left + 1.0, y + 1.0, right - 1.0, y + CARD_HEIGHT - 1.0],
+            theme.surface,
+            w,
+            h,
+        );
+        body.rect(
+            [left + 20.0, y + 24.0, left + 20.0 + icon, y + 24.0 + icon],
+            theme.surface,
+            w,
+            h,
+        );
+    }
+
+    fn draw_card_icon(&self, body: &mut UiFrame, plugin_id: &str, slot: CardSlot) {
+        let Some(icon) = self
+            .entries
+            .get(plugin_id)
+            .and_then(|entry| entry.package.icon.as_ref())
+        else {
+            return;
+        };
+
+        let CardSlot {
+            left,
+            y,
+            screen: [w, h],
+            ..
+        } = slot;
+        let scale = slot.icon_size() / icon.width().max(icon.height()).max(1) as f32;
+
+        for (row, pixels) in icon.rows().enumerate() {
+            for (column, pixel) in pixels.enumerate() {
+                if pixel[3] == 0 {
+                    continue;
+                }
+
+                let px = left + 20.0 + column as f32 * scale;
+                let py = y + 24.0 + row as f32 * scale;
+
+                body.rect(
+                    [px, py, px + scale, py + scale],
+                    Color::rgba8(pixel[0], pixel[1], pixel[2], pixel[3]),
+                    w,
+                    h,
+                );
+            }
+        }
+    }
+
+    fn draw_card_details(
+        &self,
+        body: &mut UiFrame,
+        camera: &Camera,
+        plugin_id: &str,
+        slot: CardSlot,
+    ) {
+        let Some(entry) = self.entries.get(plugin_id) else {
+            return;
+        };
+
+        let theme = self.settings.appearance.theme();
+        let manifest = &entry.package.manifest;
+        let x = slot.text_x();
+        let y = slot.y;
+        let columns = slot.text_columns();
+        let title_columns = ((slot.right - x - 20.0) / 12.0).max(1.0) as usize;
+
+        body.text(
+            camera,
+            x,
+            y + 18.0,
+            21.0,
+            clipped(&manifest.name, title_columns),
+            theme.text,
+        );
+        body.text(
+            camera,
+            x,
+            y + 48.0,
+            12.0,
+            clipped(&format!("{}  v{}", manifest.id, manifest.version), columns),
+            theme.muted,
+        );
+
+        let description = wrapped(&manifest.description, columns)
+            .lines()
+            .take(3)
+            .collect::<Vec<_>>()
+            .join("\n");
+        body.text(camera, x, y + 74.0, 14.0, description, theme.text);
+
+        body.text(
+            camera,
+            x,
+            y + 136.0,
+            12.0,
+            clipped(
+                &format!(
+                    "Permissions: {} | Dependencies: {}",
+                    manifest.permissions.len(),
+                    manifest.dependencies.len(),
+                ),
+                columns,
+            ),
+            theme.muted,
+        );
+    }
+
+    fn card_status(&self, plugin_id: &str, active: bool, columns: usize) -> (String, Color) {
+        let theme = self.settings.appearance.theme();
+
+        if active {
+            return ("Enabled".to_owned(), theme.success);
+        }
+
+        match self.plan(plugin_id) {
+            Err(error) => (
+                clipped(&format!("Blocked: {error:#}"), columns),
+                theme.error,
+            ),
+            Ok(_) => ("Disabled".to_owned(), theme.muted),
+        }
+    }
+
+    fn draw_card_actions(
+        &self,
+        body: &mut UiFrame,
+        camera: &Camera,
+        plugin_id: &str,
+        slot: CardSlot,
+    ) {
+        let Some(entry) = self.entries.get(plugin_id) else {
+            return;
+        };
+
+        let active = entry.runtime.is_some();
+        let x = slot.text_x();
+        let y = slot.y;
+        let (status, status_color) = self.card_status(plugin_id, active, slot.text_columns());
+
+        body.text(camera, x, y + 159.0, 12.0, status, status_color);
+
+        let button_width = ((slot.right - x - 28.0) * 0.5).clamp(1.0, 126.0);
+
+        body.button(
+            camera,
+            [x, y + 188.0, x + button_width, y + 220.0],
+            if active { "Disable" } else { "Activate" },
+            UiAction::TogglePlugin(plugin_id.to_owned()),
+            active,
+        );
+        body.button(
+            camera,
+            [
+                x + button_width + 8.0,
+                y + 188.0,
+                x + button_width * 2.0 + 8.0,
+                y + 220.0,
+            ],
+            "Repository",
+            UiAction::Repository(entry.package.manifest.repository.clone()),
+            false,
+        );
+    }
+
     fn draw_plugin_page(
         &self,
         frame: &mut UiFrame,
@@ -724,161 +968,30 @@ impl PluginManager {
         let theme = self.settings.appearance.theme();
 
         frame.rect([0.0, 0.0, w, h], theme.panel, w, h);
-
         self.draw_halloween_decoration(frame, camera, [w, h], true);
 
         let [left, right] = self.plugin_card_bounds(w, h);
-        let width = right - left;
         let bottom = (h - PAGE_BOTTOM).max(PAGE_TOP);
-
         let scroll = page.scroll.clamp(0.0, self.ui_scroll_max(page, camera));
-
         let mut body = UiFrame::with_theme(frame.theme);
 
-        for (index, (plugin_id, entry)) in self.entries.iter().enumerate() {
+        for (index, (plugin_id, _entry)) in self.entries.iter().enumerate() {
             let y = PAGE_TOP + index as f32 * (CARD_HEIGHT + CARD_GAP) - scroll;
 
             if y + CARD_HEIGHT <= PAGE_TOP || y >= bottom {
                 continue;
             }
 
-            let manifest = &entry.package.manifest;
-            let active = entry.runtime.is_some();
-
-            let icon_size = if width >= 600.0 { 96.0 } else { 64.0 };
-
-            let x = left + icon_size + 44.0;
-
-            let columns = ((right - x - 20.0) / 8.0).max(1.0) as usize;
-
-            body.rect([left, y, right, y + CARD_HEIGHT], theme.border, w, h);
-
-            body.rect(
-                [left + 1.0, y + 1.0, right - 1.0, y + CARD_HEIGHT - 1.0],
-                theme.surface,
-                w,
-                h,
-            );
-
-            body.rect(
-                [
-                    left + 20.0,
-                    y + 24.0,
-                    left + 20.0 + icon_size,
-                    y + 24.0 + icon_size,
-                ],
-                theme.surface,
-                w,
-                h,
-            );
-
-            if let Some(icon) = &entry.package.icon {
-                let scale = icon_size / icon.width().max(icon.height()).max(1) as f32;
-
-                for (row, pixels) in icon.rows().enumerate() {
-                    for (column, pixel) in pixels.enumerate() {
-                        if pixel[3] == 0 {
-                            continue;
-                        }
-
-                        let px = left + 20.0 + column as f32 * scale;
-
-                        let py = y + 24.0 + row as f32 * scale;
-
-                        body.rect(
-                            [px, py, px + scale, py + scale],
-                            Color::rgba8(pixel[0], pixel[1], pixel[2], pixel[3]),
-                            w,
-                            h,
-                        );
-                    }
-                }
-            }
-
-            let title_columns = ((right - x - 20.0) / 12.0).max(1.0) as usize;
-
-            body.text(
+            self.draw_plugin_card(
+                &mut body,
                 camera,
-                x,
-                y + 18.0,
-                21.0,
-                clipped(&manifest.name, title_columns),
-                theme.text,
-            );
-
-            body.text(
-                camera,
-                x,
-                y + 48.0,
-                12.0,
-                clipped(&format!("{}  v{}", manifest.id, manifest.version), columns),
-                theme.muted,
-            );
-
-            let description = wrapped(&manifest.description, columns)
-                .lines()
-                .take(3)
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            body.text(camera, x, y + 74.0, 14.0, description, theme.text);
-
-            body.text(
-                camera,
-                x,
-                y + 136.0,
-                12.0,
-                clipped(
-                    &format!(
-                        "Permissions: {} | Dependencies: {}",
-                        manifest.permissions.len(),
-                        manifest.dependencies.len(),
-                    ),
-                    columns,
-                ),
-                theme.muted,
-            );
-
-            let error = if active {
-                None
-            } else {
-                self.plan(plugin_id).err()
-            };
-
-            let (status, status_color) = if let Some(error) = error {
-                (
-                    clipped(&format!("Blocked: {error:#}"), columns),
-                    theme.error,
-                )
-            } else if active {
-                ("Enabled".to_owned(), theme.success)
-            } else {
-                ("Disabled".to_owned(), theme.muted)
-            };
-
-            body.text(camera, x, y + 159.0, 12.0, status, status_color);
-
-            let button_width = ((right - x - 28.0) * 0.5).clamp(1.0, 126.0);
-
-            body.button(
-                camera,
-                [x, y + 188.0, x + button_width, y + 220.0],
-                if active { "Disable" } else { "Activate" },
-                UiAction::TogglePlugin(plugin_id.clone()),
-                active,
-            );
-
-            body.button(
-                camera,
-                [
-                    x + button_width + 8.0,
-                    y + 188.0,
-                    x + button_width * 2.0 + 8.0,
-                    y + 220.0,
-                ],
-                "Repository",
-                UiAction::Repository(manifest.repository.clone()),
-                false,
+                plugin_id,
+                CardSlot {
+                    left,
+                    right,
+                    y,
+                    screen: [w, h],
+                },
             );
         }
 
@@ -1128,5 +1241,3 @@ impl PluginManager {
         (content_height - viewport_height).max(0.0)
     }
 }
-
-// LOL So big file TODO
