@@ -1,5 +1,6 @@
 use crate::plugins::{UiImage, UiImageKind};
 use anyhow::{Result, ensure};
+use wgpu::PipelineCompilationOptions;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -78,7 +79,7 @@ impl UiImageRenderer {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: size_of::<ImageQuad>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
@@ -94,7 +95,7 @@ impl UiImageRenderer {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),

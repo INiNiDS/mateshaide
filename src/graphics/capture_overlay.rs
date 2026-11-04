@@ -2,6 +2,7 @@ use crate::core::Color;
 use crate::export::png::CapturedPng;
 use crate::shape::ShapeInstance;
 use glam::Vec2;
+use wgpu::PipelineCompilationOptions;
 
 pub const REST_ANGLE: f32 = -0.035;
 
@@ -64,7 +65,7 @@ impl GlowOverlay {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 buffers: &[],
             },
             primitive: wgpu::PrimitiveState::default(),
@@ -73,7 +74,7 @@ impl GlowOverlay {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -130,7 +131,7 @@ pub struct CaptureOverlay {
     uniform_buf: wgpu::Buffer,
     tex_format: wgpu::TextureFormat,
     texture: Option<wgpu::Texture>,
-    _view: Option<wgpu::TextureView>,
+    view: Option<wgpu::TextureView>,
     bind_group: Option<wgpu::BindGroup>,
     cached: (u32, u32),
 }
@@ -198,7 +199,7 @@ impl CaptureOverlay {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 buffers: &[],
             },
             primitive: wgpu::PrimitiveState::default(),
@@ -207,7 +208,7 @@ impl CaptureOverlay {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -229,7 +230,7 @@ impl CaptureOverlay {
             uniform_buf,
             tex_format,
             texture: None,
-            _view: None,
+            view: None,
             bind_group: None,
             cached: (0, 0),
         }
@@ -297,7 +298,7 @@ impl CaptureOverlay {
             ],
         });
         self.texture = Some(texture);
-        self._view = Some(view);
+        self.view = Some(view);
         self.bind_group = Some(bg);
         self.cached = (image.width, image.height);
     }
@@ -333,7 +334,7 @@ impl CaptureOverlay {
 
     pub fn clear(&mut self) {
         self.texture = None;
-        self._view = None;
+        self.view = None;
         self.bind_group = None;
         self.cached = (0, 0);
     }

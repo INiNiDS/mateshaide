@@ -56,7 +56,11 @@ impl Package {
     pub fn scripts(&self) -> Result<BTreeMap<String, String>> {
         self.files
             .iter()
-            .filter(|(p, _)| p.ends_with(".lua"))
+            .filter(|(p, _)| {
+                std::path::Path::new(p)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
+            })
             .map(|(p, b)| Ok((p.clone(), std::str::from_utf8(b)?.to_owned())))
             .collect()
     }
@@ -109,9 +113,10 @@ fn plugin_roots() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from("plugins")];
 
     if let Ok(exe) = std::env::current_exe()
-        && let Some(parent) = exe.parent() {
-            roots.push(parent.join("plugins"));
-        }
+        && let Some(parent) = exe.parent()
+    {
+        roots.push(parent.join("plugins"));
+    }
 
     roots
 }
@@ -174,6 +179,7 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn read_package(root: &std::path::Path) -> Result<Package> {
+    // HIGH COMPLEXITY TODO
     fn walk(
         root: &std::path::Path,
         dir: &std::path::Path,
@@ -207,7 +213,12 @@ fn read_package(root: &std::path::Path) -> Result<Package> {
                     .context("invalid path")?
                     .replace('\\', "/");
 
-                if rel != "plugin.aam" && !rel.ends_with(".lua") && !rel.starts_with("assets/") {
+                if rel != "plugin.aam"
+                    && !std::path::Path::new(&rel)
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
+                    && !rel.starts_with("assets/")
+                {
                     continue;
                 }
 

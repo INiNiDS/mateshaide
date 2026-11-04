@@ -303,14 +303,14 @@ impl PluginManager {
         if !self.active(id) {
             return;
         }
-        let ending = is_gesture_end(&event);
-        if is_pointer(&event, "down") {
+        let ending = is_gesture_end(event);
+        if is_pointer(event, "down") {
             self.begin_history_group(id);
         }
 
         let undo = self.snapshot();
         let mut tx = Transaction::new(id, canvas.plugin_nodes.clone());
-        match self.run_handler(id, &event, &mut tx) {
+        match self.run_handler(id, event, &mut tx) {
             Ok(()) => self.commit_nodes(id, canvas, tx.nodes),
             Err(e) => {
                 undo(&mut *self);
@@ -350,7 +350,7 @@ impl PluginManager {
 
     fn run_handler(&mut self, id: &str, event: &Value, tx: &mut Transaction) -> Result<()> {
         let ctx = self.context(id, tx.nodes.as_slice())?;
-        let cmds = self.invoke(id, "handle", vec![json_value(event)?, ctx])?;
+        let cmds = self.invoke(id, "handle", &[json_value(event)?, ctx])?;
         self.apply(id, &cmds, tx)?;
 
         ensure!(
@@ -384,7 +384,7 @@ impl PluginManager {
             if let Ok(ctx) = self.context(&id, &canvas.plugin_nodes) {
                 let event = json_value(&json!({"name": "document.changed"}))
                     .unwrap_or(Value::Null);
-                let _ = self.invoke(&id, "handle", vec![event, ctx]);
+                let _ = self.invoke(&id, "handle", &[event, ctx]);
             }
         }
     }
@@ -631,7 +631,7 @@ impl PluginManager {
         let reply = self.invoke(
             target,
             "service",
-            vec![json_value(&service)?, json_value(&cmd["args"])?, ctx],
+            &[json_value(&service)?, json_value(&cmd["args"])?, ctx],
         )?;
 
         tx.chain.push(target.into());
@@ -647,7 +647,7 @@ impl PluginManager {
                 "plugin": target,
                 "service": service,
             });
-            let commands = self.invoke(id, "handle", vec![json_value(&event)?, ctx])?;
+            let commands = self.invoke(id, "handle", &[json_value(&event)?, ctx])?;
             self.apply(id, &commands, tx)?;
         }
         Ok(())
@@ -696,7 +696,7 @@ impl PluginManager {
             }),
         };
         let ctx = self.context(id, tx.nodes.as_slice())?;
-        let out = self.invoke(id, "handle", vec![json_value(&event)?, ctx])?;
+        let out = self.invoke(id, "handle", &[json_value(&event)?, ctx])?;
         self.apply(id, &out, tx)
     }
 
@@ -743,13 +743,13 @@ impl PluginManager {
             if let Some(mut runtime) = e.runtime.take()
                 && runtime.has("deactivate")
             {
-                let _ = runtime.call("deactivate", vec![]);
+                let _ = runtime.call("deactivate", &[]);
             }
             e.contributions = Contributions::default();
         }
     }
 
-    fn invoke(&mut self, id: &str, name: &str, args: Vec<Value>) -> Result<Value> {
+    fn invoke(&mut self, id: &str, name: &str, args: &[Value]) -> Result<Value> {
         self.entries
             .get_mut(id)
             .and_then(|e| e.runtime.as_mut())

@@ -107,7 +107,7 @@ impl Runtime {
         self.callbacks.contains(name)
     }
 
-    pub fn call(&mut self, name: &str, args: Vec<Value>) -> Result<Value> {
+    pub fn call(&mut self, name: &str, args: &[Value]) -> Result<Value> {
         let state = serde_json::to_string(&self.state)?;
         ensure!(state.len() <= MAX_STATE_BYTES, "plugin state limit");
 
@@ -144,13 +144,13 @@ impl Runtime {
 
     pub fn pure_call(&mut self, name: &str, args: Vec<Value>) -> Result<Value> {
         let previous = self.state.clone();
-        let out = self.call(name, args);
+        let out = self.call(name, &*args);
         self.state = previous;
         out
     }
 
     pub fn activate(&mut self) -> Result<Contributions> {
-        let contributions: Contributions = serde_json::from_value(self.call("activate", vec![])?)?;
+        let contributions: Contributions = serde_json::from_value(self.call("activate", &*vec![])?)?;
 
         validate_styles(&contributions)?;
         validate_limits(&contributions)?;

@@ -543,7 +543,11 @@ fn retain_package_files(files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Ve
     files
         .into_iter()
         .filter(|(name, _)| {
-            name == "plugin.aam" || name.ends_with(".lua") || name.starts_with("assets/")
+            name == "plugin.aam"
+                || std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
+                || name.starts_with("assets/")
         })
         .collect()
 }
