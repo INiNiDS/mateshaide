@@ -128,7 +128,7 @@ impl Engine {
             UiAction::Command(plugin_id, command_id) => {
                 self.plugins.dispatch(
                     &plugin_id,
-                    json!({
+                    &json!({
                         "name": "command",
                         "id": command_id
                     }),
@@ -167,7 +167,7 @@ impl Engine {
 
     fn send_plugin_event(&mut self, event: Value) -> bool {
         if let Some((plugin_id, _)) = self.plugins.selected.clone() {
-            self.plugins.dispatch(&plugin_id, event, &mut self.canvas);
+            self.plugins.dispatch(&plugin_id, &event, &mut self.canvas);
 
             self.sync_plugin_focus();
 
