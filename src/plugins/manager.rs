@@ -449,7 +449,7 @@ impl PluginManager {
             "object type unavailable"
         );
         let runtime = e.runtime.as_mut().context("plugin disabled")?;
-        let out = runtime.pure_call("render", vec![json_value(node)?, ctx])?;
+        let out = runtime.pure_call("render", &[json_value(node)?, ctx])?;
         scene.extend_primitives(&out)?;
         Ok(())
     }
@@ -475,7 +475,7 @@ impl PluginManager {
         }
         let out = runtime.pure_call(
             "overlay",
-            vec![json_value(&context).unwrap_or(Value::Null)],
+            &[json_value(&context).unwrap_or(Value::Null)],
         )?;
         scene.extend_primitives(&out)?;
         Ok(())

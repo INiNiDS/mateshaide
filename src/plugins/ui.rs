@@ -257,7 +257,7 @@ impl PluginManager {
         let screen = [camera.screen_size.x, camera.screen_size.y];
 
         if !page.open {
-            self.draw_canvas_grid(&mut frame, camera);
+            Self::draw_canvas_grid(&mut frame, camera);
 
             self.draw_halloween_decoration(&mut frame, camera, screen, false);
 
@@ -291,7 +291,7 @@ impl PluginManager {
         top_layout(width, &widths)
     }
 
-    fn draw_canvas_grid(&self, frame: &mut UiFrame, camera: &Camera) {
+    fn draw_canvas_grid(frame: &mut UiFrame, camera: &Camera) {
         let w = camera.screen_size.x;
         let h = camera.screen_size.y;
         let mut step = 24.0 * camera.zoom;
@@ -1060,7 +1060,7 @@ impl PluginManager {
         );
     }
 
-    fn confirmation_warning<'a>(&self, confirm: &'a Confirmation) -> &'a str {
+    fn confirmation_warning(confirm: &Confirmation) -> &str {
         if matches!(confirm, Confirmation::Enable(_)) {
             "Plugin code runs after confirmation. Requested permissions allow changes to your document or clipboard. Sandboxing is not a guarantee against all bugs or resource exhaustion. Activate only code you trust. Dependencies listed below will also be activated."
         } else {
@@ -1073,7 +1073,7 @@ impl PluginManager {
             Confirmation::Enable(ids) | Confirmation::Disable(ids) => ids,
         };
 
-        let mut text = self.confirmation_warning(confirm).to_owned();
+        let mut text = Self::confirmation_warning(confirm).to_owned();
 
         for id in ids {
             let Some(entry) = self.entries.get(id) else {
