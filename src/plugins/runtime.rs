@@ -144,13 +144,13 @@ impl Runtime {
 
     pub fn pure_call(&mut self, name: &str, args: Vec<Value>) -> Result<Value> {
         let previous = self.state.clone();
-        let out = self.call(name, &*args);
+        let out = self.call(name, &args);
         self.state = previous;
         out
     }
 
     pub fn activate(&mut self) -> Result<Contributions> {
-        let contributions: Contributions = serde_json::from_value(self.call("activate", &*vec![])?)?;
+        let contributions: Contributions = serde_json::from_value(self.call("activate", &vec![])?)?;
 
         validate_styles(&contributions)?;
         validate_limits(&contributions)?;
