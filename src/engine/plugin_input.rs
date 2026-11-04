@@ -165,9 +165,9 @@ impl Engine {
         self.sync_plugin_focus();
     }
 
-    fn send_plugin_event(&mut self, event: Value) -> bool {
+    fn send_plugin_event(&mut self, event: &Value) -> bool {
         if let Some((plugin_id, _)) = self.plugins.selected.clone() {
-            self.plugins.dispatch(&plugin_id, &event, &mut self.canvas);
+            self.plugins.dispatch(&plugin_id, event, &mut self.canvas);
 
             self.sync_plugin_focus();
 
@@ -465,7 +465,7 @@ impl Engine {
 
             Ime::Preedit(text, _) => {
                 self.plugin_ime_composing = !text.is_empty();
-                self.send_plugin_event(json!({
+                self.send_plugin_event(&json!({
                     "name": "ime.preedit",
                     "text": text
                 }))
@@ -473,7 +473,7 @@ impl Engine {
 
             Ime::Commit(text) => {
                 self.plugin_ime_composing = false;
-                self.send_plugin_event(json!({
+                self.send_plugin_event(&json!({
                     "name": "text",
                     "text": text
                 }))
@@ -481,7 +481,7 @@ impl Engine {
 
             Ime::Disabled => {
                 self.plugin_ime_composing = false;
-                self.send_plugin_event(json!({
+                self.send_plugin_event(&json!({
                     "name": "ime.preedit",
                     "text": ""
                 }))
@@ -492,7 +492,7 @@ impl Engine {
     fn send_pointer_event(&mut self, phase: &str, position: Vec2, ctrl: bool, shift: bool) -> bool {
         let world = self.canvas.camera.screen_to_world(position);
 
-        self.send_plugin_event(json!({
+        self.send_plugin_event(&json!({
             "name": "pointer",
             "phase": phase,
             "x": world.x,
@@ -519,7 +519,7 @@ impl Engine {
             _ => String::new(),
         };
 
-        let handled = self.send_plugin_event(json!({
+        let handled = self.send_plugin_event(&json!({
             "name": "key",
             "key": key,
             "ctrl": ctrl,
@@ -530,7 +530,7 @@ impl Engine {
         if !ctrl && !mods.alt_key()
             && let Some(text) = &event.text
                 && !text.is_empty() && text.chars().all(|c| !c.is_control()) {
-                    self.send_plugin_event(json!({
+                    self.send_plugin_event(&json!({
                         "name": "text",
                         "text": text.as_str()
                     }));
@@ -548,7 +548,7 @@ impl Engine {
                 plugins::platform::Request::Document(bytes) => self.open_plugin_document(&bytes),
                 plugins::platform::Request::Package(bytes) => self.install_plugin_package(&bytes),
                 plugins::platform::Request::Error(error) => self.plugins.notice = error,
-                plugins::platform::Request::Event(event) => self.handle_plugin_message(event),
+                plugins::platform::Request::Event(event) => self.handle_plugin_message(&event),
             }
         }
 
@@ -589,14 +589,14 @@ impl Engine {
         }
     }
 
-    fn handle_plugin_message(&mut self, event: Value) {
+    fn handle_plugin_message(&mut self, event: &Value) {
         if self.plugin_page.open || self.is_capturing() {
             return;
         }
 
         let global = event["name"] == "key" && event["ctrl"] == true;
 
-        if !global || !self.apply_plugin_global_shortcut(&event) {
+        if !global || !self.apply_plugin_global_shortcut(event) {
             self.send_plugin_event(event);
         }
     }
