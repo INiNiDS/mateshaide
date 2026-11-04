@@ -50,23 +50,19 @@ impl Scene {
                         color: c,
                     });
                 }
-
                 "rect" => {
                     let w = num(p, "width")?;
                     let h = num(p, "height")?;
-
                     ensure!(w >= 0.0 && h >= 0.0, "negative rectangle");
 
                     shapes.push(ShapeInstance::rect(num(p, "x")?, num(p, "y")? - h, w, h, c));
                 }
-
                 "circle" => {
                     let r = num(p, "radius")?;
                     ensure!(r >= 0.0, "negative radius");
 
                     shapes.push(ShapeInstance::circle(num(p, "x")?, num(p, "y")?, r, c));
                 }
-
                 "line" => {
                     let width = num(p, "width")?;
                     ensure!(width >= 0.0, "negative line width");
@@ -78,7 +74,6 @@ impl Scene {
                         c,
                     ));
                 }
-
                 _ => bail!("unknown graphics primitive"),
             }
         }
@@ -204,6 +199,7 @@ impl UiFrame {
 
     pub fn rect(&mut self, screen: [f32; 4], color: Color, w: f32, h: f32) {
         let [x, y, r, b] = screen;
+
         self.shapes.push(ShapeInstance::rect(
             2.0 * x / w - 1.0,
             1.0 - 2.0 * b / h,
@@ -332,29 +328,44 @@ impl UiFrame {
             .map(|(_, a)| a.clone())
     }
 
-    // HIGH COMPLEXITY TODO
     pub fn append_clipped(&mut self, layer: Self, camera: &crate::Camera, clip: [f32; 4]) {
+        let Self {
+            shapes,
+            texts,
+            hits,
+            pointer_regions,
+            ..
+        } = layer;
+
+        self.append_clipped_shapes(&shapes, camera, clip);
+        self.append_clipped_texts(&texts, camera, clip);
+        self.append_clipped_regions(&pointer_regions, clip);
+        self.append_clipped_hits(hits, clip);
+    }
+
+    fn append_clipped_shapes(
+        &mut self,
+        shapes: &[ShapeInstance],
+        camera: &crate::Camera,
+        clip: [f32; 4],
+    ) {
         let w = camera.screen_size.x;
         let h = camera.screen_size.y;
 
-        for shape in layer.shapes {
-            let left = (shape.center[0] - shape.size[0] * 0.5 + 1.0) * w * 0.5;
-
-            let top = (1.0 - shape.center[1] - shape.size[1] * 0.5) * h * 0.5;
-
-            let r = [
-                left.max(clip[0]),
-                top.max(clip[1]),
-                (left + shape.size[0] * w * 0.5).min(clip[2]),
-                (top + shape.size[1] * h * 0.5).min(clip[3]),
-            ];
-
-            if r[2] > r[0] && r[3] > r[1] {
+        for shape in shapes {
+            if let Some(r) = intersect(shape_screen_bounds(shape, w, h), clip) {
                 self.rect(r, shape.color, w, h);
             }
         }
+    }
 
-        for text in layer.texts {
+    fn append_clipped_texts(
+        &mut self,
+        texts: &[CanvasText],
+        camera: &crate::Camera,
+        clip: [f32; 4],
+    ) {
+        for text in texts {
             let position = camera.world_to_screen(text.position);
             let size = text.size * camera.zoom;
             let line_height = size * 1.25;
@@ -362,30 +373,23 @@ impl UiFrame {
             for (index, line) in text.text.split('\n').enumerate() {
                 let y = position.y + index as f32 * line_height;
 
-                if position.x >= clip[0]
-                    && position.x < clip[2]
-                    && y >= clip[1]
-                    && y + line_height <= clip[3]
-                {
+                if line_inside_clip(position.x, y, line_height, clip) {
                     self.text(camera, position.x, y, size, line, text.color);
                 }
             }
         }
+    }
 
-        for r in layer.pointer_regions {
-            let clipped = [
-                r[0].max(clip[0]),
-                r[1].max(clip[1]),
-                r[2].min(clip[2]),
-                r[3].min(clip[3]),
-            ];
-
-            if clipped[2] > clipped[0] && clipped[3] > clipped[1] {
+    fn append_clipped_regions(&mut self, regions: &[[f32; 4]], clip: [f32; 4]) {
+        for &region in regions {
+            if let Some(clipped) = intersect(region, clip) {
                 self.pointer_regions.push(clipped);
             }
         }
+    }
 
-        for (r, action) in layer.hits {
+    fn append_clipped_hits(&mut self, hits: Vec<([f32; 4], UiAction)>, clip: [f32; 4]) {
+        for (r, action) in hits {
             if r[0] >= clip[0] && r[1] >= clip[1] && r[2] <= clip[2] && r[3] <= clip[3] {
                 self.hits.push((r, action));
             }
@@ -444,7 +448,6 @@ impl UiFrame {
 
         let label = if label.chars().count() > capacity {
             let prefix: String = label.chars().take(capacity.saturating_sub(3)).collect();
-
             format!("{prefix}...")
         } else {
             label.to_owned()
@@ -461,4 +464,31 @@ impl UiFrame {
 
         self.hits.push((r, action));
     }
+}
+
+fn shape_screen_bounds(shape: &ShapeInstance, w: f32, h: f32) -> [f32; 4] {
+    let left = (shape.center[0] - shape.size[0] * 0.5 + 1.0) * w * 0.5;
+    let top = (1.0 - shape.center[1] - shape.size[1] * 0.5) * h * 0.5;
+
+    [
+        left,
+        top,
+        left + shape.size[0] * w * 0.5,
+        top + shape.size[1] * h * 0.5,
+    ]
+}
+
+fn intersect(a: [f32; 4], clip: [f32; 4]) -> Option<[f32; 4]> {
+    let r = [
+        a[0].max(clip[0]),
+        a[1].max(clip[1]),
+        a[2].min(clip[2]),
+        a[3].min(clip[3]),
+    ];
+
+    (r[2] > r[0] && r[3] > r[1]).then_some(r)
+}
+
+fn line_inside_clip(x: f32, y: f32, line_height: f32, clip: [f32; 4]) -> bool {
+    x >= clip[0] && x < clip[2] && y >= clip[1] && y + line_height <= clip[3]
 }

@@ -54,7 +54,6 @@ impl App {
         }
     }
 
-    // HIGH COMPLEXITY TODO
     pub(super) fn handle_capture_event(
         engine: &mut Engine,
         event: &winit::event::WindowEvent,

@@ -32,6 +32,7 @@ impl Package {
             files.values().map(Vec::len).sum::<usize>() <= MAX_PACKAGE_BYTES,
             "package too large"
         );
+
         for (name, bytes) in &files {
             relative_name(name)?;
             ensure!(bytes.len() <= MAX_FILE_BYTES, "file too large");
@@ -39,6 +40,7 @@ impl Package {
 
         let text = std::str::from_utf8(files.get("plugin.aam").context("missing plugin.aam")?)?;
         let manifest = Manifest::parse(text)?;
+
         ensure!(files.contains_key(&manifest.entry), "missing entry script");
 
         let fingerprint = fingerprint(&files);
@@ -146,6 +148,7 @@ fn plugin_dirs() -> Vec<PathBuf> {
             .map(|entry| entry.path())
             .filter(|path| path.is_dir())
             .collect();
+
         children.sort();
         dirs.extend(children);
     }
@@ -178,15 +181,24 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn read_package(root: &std::path::Path) -> Result<Package> {
-    // HIGH COMPLEXITY TODO
-    fn walk(
-        root: &std::path::Path,
-        dir: &std::path::Path,
-        out: &mut BTreeMap<String, Vec<u8>>,
-        total: &mut u64,
-        depth: usize,
-    ) -> Result<()> {
+fn is_package_file(rel: &str) -> bool {
+    rel == "plugin.aam"
+        || std::path::Path::new(rel)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
+        || rel.starts_with("assets/")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct PackageScan {
+    root: PathBuf,
+    files: BTreeMap<String, Vec<u8>>,
+    total: u64,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl PackageScan {
+    fn walk(&mut self, dir: &std::path::Path, depth: usize) -> Result<()> {
         ensure!(depth < MAX_DIR_DEPTH, "package nesting too deep");
 
         let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<std::io::Result<_>>()?;
@@ -204,62 +216,78 @@ fn read_package(root: &std::path::Path) -> Result<Package> {
             ensure!(!ty.is_symlink(), "symlinks in plugins are not allowed");
 
             if ty.is_dir() {
-                walk(root, &entry.path(), out, total, depth + 1)?;
+                self.walk(&entry.path(), depth + 1)?;
             } else if ty.is_file() {
-                let path = entry.path();
-                let rel = path
-                    .strip_prefix(root)?
-                    .to_str()
-                    .context("invalid path")?
-                    .replace('\\', "/");
-
-                if rel != "plugin.aam"
-                    && !std::path::Path::new(&rel)
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
-                    && !rel.starts_with("assets/")
-                {
-                    continue;
-                }
-
-                ensure!(out.len() < MAX_PACKAGE_FILES, "too many files");
-
-                let size = entry.metadata()?.len();
-                *total += size;
-                ensure!(
-                    size <= MAX_FILE_BYTES as u64 && *total <= MAX_PACKAGE_BYTES as u64,
-                    "package too large"
-                );
-                ensure!(
-                    path.canonicalize()?.starts_with(root),
-                    "file escapes package root"
-                );
-
-                let mut bytes = Vec::new();
-                std::fs::File::open(path)?
-                    .take(MAX_FILE_BYTES as u64 + 1)
-                    .read_to_end(&mut bytes)?;
-                ensure!(bytes.len() <= MAX_FILE_BYTES, "file grew during scan");
-
-                out.insert(rel, bytes);
+                self.add_file(&entry.path())?;
             }
         }
 
         Ok(())
     }
 
-    let root = root.canonicalize()?;
-    let mut files = BTreeMap::new();
-    let mut total = 0;
+    fn add_file(&mut self, path: &std::path::Path) -> Result<()> {
+        let rel = self.relative_path(path)?;
 
-    walk(&root, &root, &mut files, &mut total, 0)?;
-    Package::from_files(files, root.display().to_string())
+        if !is_package_file(&rel) {
+            return Ok(());
+        }
+
+        ensure!(self.files.len() < MAX_PACKAGE_FILES, "too many files");
+
+        let size = path.metadata()?.len();
+        self.total += size;
+
+        ensure!(
+            size <= MAX_FILE_BYTES as u64 && self.total <= MAX_PACKAGE_BYTES as u64,
+            "package too large"
+        );
+
+        ensure!(
+            path.canonicalize()?.starts_with(&self.root),
+            "file escapes package root"
+        );
+
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)?
+            .take(MAX_FILE_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)?;
+
+        ensure!(bytes.len() <= MAX_FILE_BYTES, "file grew during scan");
+
+        self.files.insert(rel, bytes);
+
+        Ok(())
+    }
+
+    fn relative_path(&self, path: &std::path::Path) -> Result<String> {
+        Ok(path
+            .strip_prefix(&self.root)?
+            .to_str()
+            .context("invalid path")?
+            .replace('\\', "/"))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_package(root: &std::path::Path) -> Result<Package> {
+    let root = root.canonicalize()?;
+
+    let mut scan = PackageScan {
+        root: root.clone(),
+        files: BTreeMap::new(),
+        total: 0,
+    };
+
+    scan.walk(&root, 0)?;
+
+    Package::from_files(scan.files, root.display().to_string())
 }
 
 #[cfg(target_arch = "wasm32")]
 pub fn discover() -> (Vec<Package>, Vec<String>) {
     let mut out = Vec::new();
     let mut errors = Vec::new();
+
     macro_rules! bundled {
         ($dir:literal) => {{
             let files = BTreeMap::from([
