@@ -107,6 +107,40 @@ local BIG_OPS = {
 }
 
 
+local BASELINE_RATIO = (1.25 - (1900 + 500) / 2048) / 2 + 1900 / 2048
+local LIMIT_ASCENT = 1536 / 2048
+local LIMIT_DESCENT = 437 / 2048
+
+local OP_INK = {
+	["∑"] = { 1456 / 2048, -270 / 2048 },
+	["∏"] = { 1456 / 2048, -270 / 2048 },
+	["∫"] = { 1558 / 2048, -437 / 2048 },
+	["∬"] = { 1558 / 2048, -437 / 2048 },
+	["∮"] = { 1558 / 2048, -437 / 2048 },
+}
+
+local BIG_OP_SPACING1 = 0.111
+local BIG_OP_SPACING2 = 0.167
+local BIG_OP_SPACING3 = 0.200
+local BIG_OP_SPACING4 = 0.600
+local BIG_OP_SPACING5 = 0.100
+local OP_RAISE = 0.16
+
+local SIDE_LIMIT_OPS = { ["∫"] = true, ["∬"] = true, ["∮"] = true }
+local INT_SUP_KERN = 0.08
+local INT_SUB_KERN = 0.02
+
+local SUB_SHIFT = 0.15
+local SUP_SHIFT = 0.42
+
+local function baseline_of(dy, size)
+	return dy - BASELINE_RATIO * size
+end
+
+local function dy_for_baseline(baseline, size)
+	return baseline + BASELINE_RATIO * size
+end
+
 local SIZE_FACTORS = {
 	size_up = 1.18,
 	size_down = 1.0 / 1.18,
@@ -448,11 +482,19 @@ local function limit_width(gs, info, lim_size)
 	return max(8.0, measure_text_width(s_txt, lim_size))
 end
 
+
+local function grow_line(b, ink_top, ink_bottom)
+	local pad = b.base * BIG_OP_SPACING5
+	b.ascent = max(b.ascent, ink_top + b.base + pad)
+	b.descent = max(b.descent, -ink_bottom - b.base + pad)
+end
+
 local function layout_big_op(b, i, line_end)
 	local gs, base = b.gs, b.base
 	local op_char = gs[i]
 	local op_size = clamp_range(base * 1.38, 4.0, 512.0)
 	local op_w = measure_text_width(op_char, op_size)
+	local ink = OP_INK[op_char] or OP_INK["∫"]
 
 	local sub_info, sup_info, next_idx = read_limits(gs, i + 1, line_end)
 
@@ -460,32 +502,63 @@ local function layout_big_op(b, i, line_end)
 	local sup_w = limit_width(gs, sup_info, lim_size)
 	local sub_w = limit_width(gs, sub_info, lim_size)
 
-	local block_w = max(op_w, max(sup_w, sub_w)) + base * 0.22
-	local op_x = b.x + (block_w - op_w) * 0.5
+	local op_dy = base * OP_RAISE
+	local op_base = baseline_of(op_dy, op_size)
+	local op_top = op_base + ink[1] * op_size
+	local op_bottom = op_base + ink[2] * op_size
+	local lim_asc = LIMIT_ASCENT * lim_size
+	local lim_desc = LIMIT_DESCENT * lim_size
+
+	local side = SIDE_LIMIT_OPS[op_char]
+	local block_w, op_x
+	if side then
+		block_w = op_w + max(sup_w, sub_w) + base * 0.22
+		op_x = b.x + base * 0.05
+	else
+		block_w = max(op_w, max(sup_w, sub_w)) + base * 0.22
+		op_x = b.x + (block_w - op_w) * 0.5
+	end
 
 	push_primitive(b, {
 		kind = "text",
 		dx = op_x,
-		dy = base * 0.16,
+		dy = op_dy,
 		text = op_char,
 		size = op_size,
 	})
 	set_caret(b, i, op_x, 0.0, base * 1.25)
+	grow_line(b, op_top, op_bottom)
 
 	if sup_info then
-		local sx = b.x + (block_w - sup_w) * 0.5
-		local sy = base * 0.72
+		local sx, sup_base
+		if side then
+			sx = op_x + op_w + op_size * INT_SUP_KERN
+			sup_base = op_top - lim_asc * 0.6
+		else
+			sx = b.x + (block_w - sup_w) * 0.5
+			local gap = max(BIG_OP_SPACING1 * base, BIG_OP_SPACING3 * base - lim_desc)
+			sup_base = op_top + gap + lim_desc
+		end
+		local sy = dy_for_baseline(sup_base, lim_size)
 		set_caret(b, sup_info.op_i, sx, sy, lim_size * 1.25)
 		emit_span(b, sup_info.raw_s, sup_info.raw_e, sx, sy, lim_size, true)
-		b.ascent = max(b.ascent, base * 1.55)
+		grow_line(b, sup_base + lim_asc, sup_base - lim_desc)
 	end
 
 	if sub_info then
-		local sx = b.x + (block_w - sub_w) * 0.5
-		local sy = -base * 0.62
+		local sx, sub_base
+		if side then
+			sx = op_x + op_w - op_size * INT_SUB_KERN
+			sub_base = op_bottom + lim_desc * 0.5
+		else
+			sx = b.x + (block_w - sub_w) * 0.5
+			local gap = max(BIG_OP_SPACING2 * base, BIG_OP_SPACING4 * base - lim_asc)
+			sub_base = op_bottom - gap - lim_asc
+		end
+		local sy = dy_for_baseline(sub_base, lim_size)
 		set_caret(b, sub_info.op_i, sx, sy, lim_size * 1.25)
 		emit_span(b, sub_info.raw_s, sub_info.raw_e, sx, sy, lim_size, true)
-		b.descent = max(b.descent, base * 0.90)
+		grow_line(b, sub_base + lim_asc, sub_base - lim_desc)
 	end
 
 	b.x = b.x + block_w
@@ -521,8 +594,11 @@ local function layout_script(b, i, line_end)
 	local is_sup = gs[i] == "^"
 	local raw_s, raw_e = parse_script_group(gs, i + 1, line_end)
 
-	local sc_size = clamp_range(base * 0.65, 4.0, 512.0)
-	local sc_y = is_sup and (base * 0.38) or (-base * 0.32)
+	if is_sup then
+		b.ascent = max(b.ascent, base * 1.25)
+	else
+		b.descent = max(b.descent, base * 0.55)
+	end
 
 	set_caret(b, i, b.x, sc_y, sc_size * 1.25)
 	local w = emit_span(b, raw_s, raw_e, b.x, sc_y, sc_size, true)
