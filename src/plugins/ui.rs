@@ -67,6 +67,7 @@ pub enum UiAction {
     ExportPng,
     ExportPdf,
     ToggleEraser,
+    ToggleText,
 }
 
 #[derive(Default)]
@@ -78,6 +79,7 @@ pub struct PluginPage {
     pub quick_scroll: f32,
     pub draw_enabled: bool,
     pub eraser_enabled: bool,
+    pub text_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -180,7 +182,7 @@ fn top_layout(width: f32, tool_widths: &[f32]) -> TopLayout {
     let lead = if brand { 102.0 } else { 0.0 };
 
     let raw_sys = [
-        68.0, 52.0, 52.0, 58.0, 66.0, 52.0, 52.0, 38.0, 52.0, 38.0, 48.0, 48.0,
+        68.0, 52.0, 52.0, 58.0, 52.0, 66.0, 52.0, 52.0, 38.0, 52.0, 38.0, 48.0, 48.0,
     ];
     let system_widths = fit_button_widths(&raw_sys, available, lead);
     let sys_natural = panel_width(&system_widths, lead).min(available);
@@ -436,6 +438,7 @@ impl PluginManager {
             (("Save", UiAction::Save), false),
             (("Draw", UiAction::ToggleDraw), page.draw_enabled),
             (("Eraser", UiAction::ToggleEraser), page.eraser_enabled),
+            (("Text", UiAction::ToggleText), page.text_enabled),
             (("Undo", UiAction::Undo), false),
             (("Redo", UiAction::Redo), false),
             (("-", UiAction::ZoomOut), false),

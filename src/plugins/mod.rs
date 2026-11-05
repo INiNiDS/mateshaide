@@ -13,6 +13,10 @@ mod runtime;
 mod ui;
 
 pub use document::PluginNode;
+
+pub const TEXT_PLUGIN: &str = "org.matesha.text";
+pub const TEXT_TOOL: &str = "text";
+
 pub use manager::PluginManager;
 pub use render::{Scene, UiFrame};
 pub(crate) use render::{UiImage, UiImageKind};

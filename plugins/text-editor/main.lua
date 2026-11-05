@@ -106,7 +106,6 @@ local BIG_OPS = {
 	["∏"] = true,
 }
 
-
 local BASELINE_RATIO = (1.25 - (1900 + 500) / 2048) / 2 + 1900 / 2048
 local LIMIT_ASCENT = 1536 / 2048
 local LIMIT_DESCENT = 437 / 2048
@@ -176,6 +175,40 @@ end
 local function reset_drag(s)
 	s.dragging = false
 	s.interaction = ""
+end
+
+-- Блок, созданный кликом/двойным кликом, живёт только в состоянии плагина (s.pending),
+-- пока в него не введён первый символ: тогда он попадает в документ одним node.create
+-- (один шаг undo). Пустой блок в документ и в историю не попадает вовсе.
+local function current_node(s, nodes)
+	local node = find_node(nodes, s.current)
+	if node then
+		return node
+	end
+	if s.pending and s.pending.id == s.current then
+		return s.pending
+	end
+	return nil
+end
+
+local function materialize_pending(s, cmds)
+	local p = s.pending
+	if not p or type(cmds) ~= "table" then
+		return cmds
+	end
+	local out = array()
+	for _, c in ipairs(cmds) do
+		if c.kind == "node.update" and c.node and c.node.id == p.id then
+			s.pending = c.node
+			if c.node.data.text ~= "" then
+				s.pending = nil
+				out[#out + 1] = { kind = "node.create", node = c.node }
+			end
+		else
+			out[#out + 1] = c
+		end
+	end
+	return out
 end
 
 local function is_word_char(g)
@@ -363,7 +396,6 @@ local function emit_span(b, s_idx, e_idx, x, y_offset, font_size, hide_braces)
 	return lay.width
 end
 
-
 local function find_slash_pos(gs, i, line_end)
 	if not is_expr_Atom_char(gs[i]) or gs[i] == "/" then
 		return nil
@@ -482,7 +514,6 @@ local function limit_width(gs, info, lim_size)
 	return max(8.0, measure_text_width(s_txt, lim_size))
 end
 
-
 local function grow_line(b, ink_top, ink_bottom)
 	local pad = b.base * BIG_OP_SPACING5
 	b.ascent = max(b.ascent, ink_top + b.base + pad)
@@ -594,20 +625,15 @@ local function layout_script(b, i, line_end)
 	local is_sup = gs[i] == "^"
 	local raw_s, raw_e = parse_script_group(gs, i + 1, line_end)
 
-	if is_sup then
-		b.ascent = max(b.ascent, base * 1.25)
-	else
-		b.descent = max(b.descent, base * 0.55)
-	end
+	local sc_size = clamp_range(base * 0.65, 4.0, 512.0)
+	local text_base = baseline_of(0.0, base)
+	local sc_base = is_sup and (text_base + SUP_SHIFT * base) or (text_base - SUB_SHIFT * base)
+	local sc_y = dy_for_baseline(sc_base, sc_size)
 
 	set_caret(b, i, b.x, sc_y, sc_size * 1.25)
 	local w = emit_span(b, raw_s, raw_e, b.x, sc_y, sc_size, true)
 
-	if is_sup then
-		b.ascent = max(b.ascent, base * 1.25)
-	else
-		b.descent = max(b.descent, base * 0.55)
-	end
+	grow_line(b, sc_base + LIMIT_ASCENT * sc_size, sc_base - LIMIT_DESCENT * sc_size)
 
 	b.x = b.x + max(w, 4.0)
 	set_caret(b, raw_e + 1, b.x, 0.0, base * 1.25)
@@ -788,7 +814,6 @@ local function new_node(s, ctx, x, y, text)
 
 	return node
 end
-
 
 local function replace_pair_symbol(node, s, gs, caret)
 	local two = gs[caret - 1] .. gs[caret]
@@ -1034,6 +1059,7 @@ end
 
 function P.activate(s)
 	s.current = ""
+	s.pending = nil
 	s.caret = 0
 	s.anchor = 0
 	s.dragging = false
@@ -1176,6 +1202,27 @@ local function begin_node_drag(s, node, event)
 	return false
 end
 
+-- Завершение ввода (Escape, клик мимо, blur, смена инструмента):
+-- несохранённый s.pending просто забывается, ставший пустым блок удаляется.
+local function finish_editing(s, ctx)
+	s.preedit = ""
+	reset_drag(s)
+	local out = array()
+	if s.pending then
+		if s.current == s.pending.id then
+			s.current = ""
+		end
+		s.pending = nil
+	end
+	local node = find_node(ctx.nodes, s.current)
+	if node and node.data.text == "" then
+		out[#out + 1] = { kind = "node.delete", id = node.id }
+		s.current = ""
+	end
+	out[#out + 1] = { kind = "input.blur" }
+	return out
+end
+
 local function pointer_down(s, ctx, event)
 	local current = find_node(ctx.nodes, s.current)
 	if begin_node_drag(s, current, event) then
@@ -1183,13 +1230,26 @@ local function pointer_down(s, ctx, event)
 	end
 
 	local hit = find_hit(ctx.nodes, event.x, event.y)
-	s.dragging = true
-	s.interaction = "select"
 
 	if not hit then
+		-- Как в Excalidraw: клик мимо во время ввода только завершает его,
+		-- следующий клик по пустому месту создаёт новый блок.
+		if ctx.focused and (s.pending or current) then
+			return finish_editing(s, ctx)
+		end
 		local node = new_node(s, ctx, event.x, event.y, "")
-		return { { kind = "node.create", node = node }, { kind = "input.focus" } }
+		s.pending = node
+		return { { kind = "input.focus" } }
 	end
+
+	local out = array()
+	s.pending = nil
+	if current and current.id ~= hit.id and current.data.text == "" then
+		out[#out + 1] = { kind = "node.delete", id = current.id }
+	end
+
+	s.dragging = true
+	s.interaction = "select"
 
 	local same = s.current == hit.id
 	s.current = hit.id
@@ -1199,7 +1259,8 @@ local function pointer_down(s, ctx, event)
 		s.anchor = s.caret
 	end
 
-	return { { kind = "input.focus" } }
+	out[#out + 1] = { kind = "input.focus" }
+	return out
 end
 
 local function handle_pointer(s, ctx, event)
@@ -1233,7 +1294,7 @@ end
 
 local function apply_color(s, ctx, color)
 	s.color = copy_color(color)
-	local node = find_node(ctx.nodes, s.current)
+	local node = current_node(s, ctx.nodes)
 	if not node then
 		return array()
 	end
@@ -1242,7 +1303,7 @@ local function apply_color(s, ctx, color)
 end
 
 local function resolve_target(s, ctx)
-	local node = find_node(ctx.nodes, s.current)
+	local node = current_node(s, ctx.nodes)
 	if not node and #ctx.nodes > 0 then
 		node = ctx.nodes[#ctx.nodes]
 		s.current = node.id
@@ -1356,7 +1417,7 @@ local function track_shift_char(s, event)
 	end
 end
 
-local function handle_key(s, node, event)
+local function handle_key(s, ctx, node, event)
 	local key = event.key
 
 	if event.ctrl then
@@ -1367,9 +1428,7 @@ local function handle_key(s, node, event)
 	end
 
 	if key == "Escape" then
-		s.preedit = ""
-		reset_drag(s)
-		return { { kind = "input.blur" } }
+		return finish_editing(s, ctx)
 	end
 
 	if CURSOR_KEYS[key] then
@@ -1393,6 +1452,7 @@ end
 local function handle_document_changed(s, ctx)
 	local node = find_node(ctx.nodes, s.current)
 	if not node then
+		s.pending = nil
 		s.current = ""
 		s.caret = 0
 		s.anchor = 0
@@ -1431,7 +1491,13 @@ local function handle_text_input(s, node, text, is_typed)
 	return { { kind = "node.update", node = replace_selection(s, node, text, false) } }
 end
 
+local handle_event
+
 function P.handle(s, event, ctx)
+	return materialize_pending(s, handle_event(s, event, ctx))
+end
+
+handle_event = function(s, event, ctx)
 	local name = event.name
 
 	if name == "command" then
@@ -1439,9 +1505,7 @@ function P.handle(s, event, ctx)
 	end
 
 	if name == "blur" or name == "tool.selected" then
-		s.preedit = ""
-		reset_drag(s)
-		return { { kind = "input.blur" } }
+		return finish_editing(s, ctx)
 	end
 
 	if name == "document.changed" then
@@ -1457,7 +1521,7 @@ function P.handle(s, event, ctx)
 		return array()
 	end
 
-	local node = find_node(ctx.nodes, s.current)
+	local node = current_node(s, ctx.nodes)
 	if not node or not ctx.focused then
 		return array()
 	end
@@ -1470,7 +1534,7 @@ function P.handle(s, event, ctx)
 	end
 
 	if name == "key" then
-		return handle_key(s, node, event)
+		return handle_key(s, ctx, node, event)
 	end
 
 	return array()
@@ -1509,7 +1573,7 @@ function P.render(s, node, ctx)
 end
 
 function P.overlay(s, ctx)
-	local node = find_node(ctx.nodes, s.current)
+	local node = current_node(s, ctx.nodes)
 	if not node then
 		return array()
 	end

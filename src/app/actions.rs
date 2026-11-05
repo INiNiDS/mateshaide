@@ -9,6 +9,7 @@ pub(super) fn register(input: &mut InputManager) {
     register_camera_actions(input);
     register_export_actions(input);
     register_eraser_actions(input);
+    register_text_actions(input);
 }
 
 fn register_draw_actions(input: &mut InputManager) {
@@ -111,4 +112,12 @@ fn register_eraser_actions(input: &mut InputManager) {
     input.bind(Shortcut::key(KeyCode::KeyE), "eraser");
     input.bind(Shortcut::key(KeyCode::Digit8).ctrl(), "toggle_eraser");
     input.bind(Shortcut::key(KeyCode::Escape), "escape");
+}
+
+fn register_text_actions(input: &mut InputManager) {
+    input.register_action("text_tool", |engine: &mut Engine| {
+        engine.select_text_tool();
+    });
+
+    input.bind(Shortcut::key(KeyCode::KeyT), "text_tool");
 }

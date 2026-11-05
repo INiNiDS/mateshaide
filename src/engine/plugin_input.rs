@@ -12,6 +12,8 @@ use winit::{
 };
 
 const PLUGIN_WHEEL_LINE: f32 = 40.0;
+const DOUBLE_CLICK_SECS: f32 = 0.4;
+const DOUBLE_CLICK_PX: f32 = 6.0;
 
 impl Engine {
     pub fn clear_plugin_tool(&mut self) {
@@ -67,6 +69,7 @@ impl Engine {
     pub(crate) fn plugin_frame(&mut self) -> UiFrame {
         self.plugin_page.draw_enabled = self.draw.enabled;
         self.plugin_page.eraser_enabled = self.eraser.enabled;
+        self.plugin_page.text_enabled = self.text_tool_selected();
         if self.is_capturing() {
             UiFrame::with_theme(self.plugins.settings.appearance.theme())
         } else {
@@ -90,6 +93,14 @@ impl Engine {
 
             UiAction::SelectPlugin(id) => {
                 self.plugin_page.selected = Some(id);
+            }
+
+            UiAction::ToggleText => {
+                if self.text_tool_selected() {
+                    self.clear_plugin_tool();
+                } else {
+                    self.select_text_tool();
+                }
             }
 
             UiAction::TogglePlugin(id) => {
@@ -510,13 +521,56 @@ impl Engine {
         }
     }
 
+
+    #[must_use]
+    pub fn text_tool_selected(&self) -> bool {
+        self.plugins
+            .selected
+            .as_ref()
+            .is_some_and(|(p, t)| p == plugins::TEXT_PLUGIN && t == plugins::TEXT_TOOL)
+    }
+
+    pub fn select_text_tool(&mut self) -> bool {
+        if self.text_tool_selected() {
+            return true;
+        }
+        if !self.plugins.active(plugins::TEXT_PLUGIN) {
+            self.plugins.notice =
+                "Text tool needs the Text Editor plugin: open Plugins and activate it.".into();
+            return false;
+        }
+        self.plugin_action(UiAction::Tool(
+            plugins::TEXT_PLUGIN.into(),
+            plugins::TEXT_TOOL.into(),
+        ));
+        self.text_tool_selected()
+    }
+
+    pub fn create_text_at(&mut self, screen: Vec2) -> bool {
+        if !self.select_text_tool() {
+            return false;
+        }
+        self.send_pointer_event("down", screen, false, false);
+        self.send_pointer_event("up", screen, false, false);
+        true
+    }
+
+    pub fn register_canvas_click(&mut self, screen: Vec2) -> bool {
+        let now = web_time::Instant::now();
+        let double = self.last_click.is_some_and(|(at, pos)| {
+            (now - at).as_secs_f32() <= DOUBLE_CLICK_SECS && pos.distance(screen) <= DOUBLE_CLICK_PX
+        });
+        self.last_click = if double { None } else { Some((now, screen)) };
+        double
+    }
+
     fn is_tool_shortcut(&self, event: &KeyEvent, ctrl: bool, mods: ModifiersState) -> bool {
         !ctrl
             && !mods.alt_key()
             && !self.plugins.wants_text_input()
             && matches!(
                 event.physical_key,
-                PhysicalKey::Code(KeyCode::KeyE | KeyCode::Escape)
+                PhysicalKey::Code(KeyCode::KeyE | KeyCode::Escape | KeyCode::KeyT)
             )
     }
 

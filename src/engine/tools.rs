@@ -61,6 +61,8 @@ impl Engine {
     pub fn cursor_icon(&self) -> CursorIcon {
         if self.eraser.enabled {
             CursorIcon::Crosshair
+        } else if self.text_tool_selected() {
+            CursorIcon::Text
         } else {
             CursorIcon::Default
         }

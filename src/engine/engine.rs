@@ -51,6 +51,7 @@ pub struct Engine {
     pub(crate) plugin_pointer_captured: bool,
     pub(crate) plugin_ime_composing: bool,
     pub capture_cursor: Vec2,
+    pub(crate) last_click: Option<(Instant, Vec2)>,
     renderer: Renderer,
     last_frame_time: Instant,
     capture: CaptureState,
@@ -93,6 +94,7 @@ impl Engine {
             capture: CaptureState::default(),
             pending_png: None,
             pdf_job: None,
+            last_click: None,
         })
     }
 
