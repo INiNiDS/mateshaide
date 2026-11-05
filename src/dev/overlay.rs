@@ -82,7 +82,6 @@ pub(crate) fn build_texts(canvas: &Canvas, tool: &TestSpawner) -> Vec<CanvasText
             ),
             None => "DEV | select | click a shape | V: leave selection mode".to_owned(),
         },
-        TestMode::Erase => "DEV | eraser | click / 1: remove topmost shape or text block".to_owned(),
     };
 
     vec![CanvasText {

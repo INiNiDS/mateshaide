@@ -35,10 +35,6 @@ fn register_test_shape_actions(input: &mut InputManager) {
         engine.spawn_test_shape();
     });
 
-    input.register_action("test_toggle_eraser", |engine: &mut Engine| {
-        engine.toggle_test_eraser();
-    });
-
     input.bind(Shortcut::key(KeyCode::Digit1).ctrl(), "test_toggle_spawn");
 
     input.bind(Shortcut::key(KeyCode::Digit2).ctrl(), "test_select_rect");
@@ -54,7 +50,6 @@ fn register_test_shape_actions(input: &mut InputManager) {
 
     input.bind(Shortcut::key(KeyCode::Digit1), "test_spawn");
 
-    input.bind(Shortcut::key(KeyCode::Digit8).ctrl(), "test_toggle_eraser");
 }
 
 fn register_test_color_actions(input: &mut InputManager) {
@@ -84,9 +79,6 @@ fn register_test_edit_actions(input: &mut InputManager) {
     input.register_action("test_delete_selected", |engine: &mut Engine| {
         engine.delete_test_selection();
     });
-    input.register_action("test_escape", |engine: &mut Engine| {
-        engine.escape_test_interaction();
-    });
     input.bind(Shortcut::key(KeyCode::KeyV), "test_toggle_select");
     input.bind(
         Shortcut::key(KeyCode::Digit1).ctrl().shift(),
@@ -94,7 +86,6 @@ fn register_test_edit_actions(input: &mut InputManager) {
     );
     input.bind(Shortcut::key(KeyCode::Delete), "test_delete_selected");
     input.bind(Shortcut::key(KeyCode::Backspace), "test_delete_selected");
-    input.bind(Shortcut::key(KeyCode::Escape), "test_escape");
 }
 
 fn register_test_size_actions(input: &mut InputManager) {

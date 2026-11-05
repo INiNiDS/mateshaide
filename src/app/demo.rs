@@ -11,6 +11,7 @@ MateshaIDE: controls
 DRAWING
   Ctrl+9              toggle draw mode
   LMB + drag          draw (when draw mode is on)
+  E                   toggle eraser; LMB / 1 removes a shape
 
 HISTORY
   Ctrl+Z              undo
@@ -41,7 +42,6 @@ DEV TOOLS (debug builds only)
   Ctrl+2..5           rect / circle / hexagon / rounded_rect
   Ctrl+6              color mode: Cycle / Fixed / Picked
   Ctrl+7              next palette color (Picked)
-  Ctrl+8              toggle eraser; LMB / 1 removes a shape
   V / Ctrl+Shift+1    toggle selection mode
   LMB + drag          select and move topmost shape
   Drag corner         resize selected shape

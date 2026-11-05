@@ -1,5 +1,5 @@
 use crate::canvas::Canvas;
-use crate::canvas::DrawTool;
+use crate::canvas::{DrawTool, Eraser};
 #[cfg(debug_assertions)]
 use crate::dev::TestSpawner;
 use crate::export::bounds::{Rect, content_bounds, frame_camera, item_rects};
@@ -45,6 +45,7 @@ pub struct Engine {
     #[cfg(debug_assertions)]
     pub test_spawner: TestSpawner,
     pub draw: DrawTool,
+    pub eraser: Eraser,
     pub(crate) plugins: crate::plugins::PluginManager,
     pub(crate) plugin_page: crate::plugins::PluginPage,
     pub(crate) plugin_pointer_captured: bool,
@@ -80,6 +81,7 @@ impl Engine {
             shapes,
             renderer,
             draw: DrawTool::default(),
+            eraser: Eraser::default(),
             plugins,
             plugin_page: crate::plugins::PluginPage::default(),
             plugin_pointer_captured: false,
@@ -517,6 +519,7 @@ impl Engine {
 
     pub fn undo(&mut self) -> bool {
         self.draw.end(&mut self.canvas);
+        self.eraser.release(&mut self.canvas);
         #[cfg(debug_assertions)]
         {
             self.finish_test_interaction();
@@ -532,6 +535,7 @@ impl Engine {
 
     pub fn redo(&mut self) -> bool {
         self.draw.end(&mut self.canvas);
+        self.eraser.release(&mut self.canvas);
         #[cfg(debug_assertions)]
         {
             self.finish_test_interaction();

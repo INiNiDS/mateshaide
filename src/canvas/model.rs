@@ -74,39 +74,32 @@ impl Canvas {
         true
     }
 
-    #[must_use]
-    pub fn plugin_node_at_world(&self, world: Vec2) -> Option<usize> {
-        self.plugin_nodes.iter().rposition(|n| {
-            world.x >= n.x
-                && world.x <= n.x + n.width
-                && world.y <= n.y
-                && world.y >= n.y - n.height
-        })
+    pub(crate) fn begin_batch(&mut self) -> bool {
+        self.history
+            .record_snapshot(&self.instances, &self.texts, &self.plugin_nodes)
     }
 
-    #[must_use]
-    pub fn text_at_world(&self, world: Vec2) -> Option<usize> {
-       self.texts
-            .iter()
-            .rposition(|t| crate::export::bounds::text_contains(t, world))
+    pub(crate) fn discard_batch(&mut self) {
+        self.history.discard_last_undo();
     }
 
-    pub fn erase_plugin_node(&mut self, index: usize) -> bool {
-        if index >= self.plugin_nodes.len() {
-            return false;
+    pub(crate) fn remove_hit(&mut self, hit: super::hit::Hit) -> bool {
+        use super::hit::Hit;
+        match hit {
+            Hit::Node(i) if i < self.plugin_nodes.len() => {
+                self.plugin_nodes.remove(i);
+                true
+            }
+            Hit::Text(i) if i < self.texts.len() => {
+                self.texts.remove(i);
+                true
+            }
+            Hit::Shape(i) if i < self.instances.len() => {
+                self.instances.remove(i);
+                true
+            }
+            _ => false,
         }
-        self.record_history();
-        self.plugin_nodes.remove(index);
-        true
-    }
-
-    pub fn erase_text(&mut self, index: usize) -> bool {
-        if index >= self.texts.len() {
-            return false;
-        }
-        self.record_history();
-        self.texts.remove(index);
-        true
     }
 
     pub fn erase_at_world(&mut self, world: Vec2) -> bool {

@@ -55,6 +55,10 @@ impl Engine {
             for text in &mut scene.texts {
                 text.color = theme.display_ink(text.color);
             }
+
+            if show_overlay {
+                scene.shapes.extend(self.eraser_highlight());
+            }
         }
 
         scene
@@ -62,6 +66,7 @@ impl Engine {
 
     pub(crate) fn plugin_frame(&mut self) -> UiFrame {
         self.plugin_page.draw_enabled = self.draw.enabled;
+        self.plugin_page.eraser_enabled = self.eraser.enabled;
         if self.is_capturing() {
             UiFrame::with_theme(self.plugins.settings.appearance.theme())
         } else {
@@ -122,6 +127,8 @@ impl Engine {
                 #[cfg(debug_assertions)]
                 self.disable_test_tools();
 
+                self.set_eraser(false);
+
                 self.plugin_pointer_captured = false;
 
                 self.plugins
@@ -171,8 +178,15 @@ impl Engine {
                 if !self.draw.enabled {
                     self.disable_test_tools();
                 }
+                if !self.draw.enabled {
+                    self.set_eraser(false);
+                }
                 self.draw.toggle();
                 self.plugin_page.draw_enabled = self.draw.enabled;
+            }
+
+            UiAction::ToggleEraser => {
+                self.toggle_eraser();
             }
 
             UiAction::Undo => {
@@ -485,13 +499,25 @@ impl Engine {
             }
 
             WindowEvent::KeyboardInput { event, .. }
-                if self.plugins.selected.is_some() && event.state == ElementState::Pressed =>
+                if self.plugins.selected.is_some()
+                    && event.state == ElementState::Pressed
+                    && !self.is_tool_shortcut(event, ctrl, mods) =>
             {
                 self.handle_plugin_key(event, ctrl, shift, mods)
             }
 
             _ => false,
         }
+    }
+
+    fn is_tool_shortcut(&self, event: &KeyEvent, ctrl: bool, mods: ModifiersState) -> bool {
+        !ctrl
+            && !mods.alt_key()
+            && !self.plugins.wants_text_input()
+            && matches!(
+                event.physical_key,
+                PhysicalKey::Code(KeyCode::KeyE | KeyCode::Escape)
+            )
     }
 
     fn wheel_delta_y(delta: &MouseScrollDelta) -> f32 {

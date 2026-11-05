@@ -5,9 +5,6 @@ use winit::event::{ElementState, KeyEvent, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 
-#[cfg(debug_assertions)]
-use crate::dev::TestMode;
-
 const WHEEL_X_EPSILON: f32 = 0.001;
 const WHEEL_PAN_SCALE: f32 = 32.0;
 
@@ -171,10 +168,6 @@ impl App {
             return false;
         }
         match state {
-            ElementState::Pressed if engine.test_spawner.mode == Some(TestMode::Erase) => {
-                engine.test_spawner.cursor_screen = input.cursor_position();
-                engine.erase_test_at_cursor();
-            }
             ElementState::Pressed => {
                 engine.test_spawner.pointer_pressed(
                     &mut engine.canvas,
@@ -211,6 +204,16 @@ impl App {
         state: ElementState,
         window: &Window,
     ) {
+        if engine.eraser.enabled {
+            match state {
+                ElementState::Pressed => {
+                    engine.eraser_pressed(input.cursor_position());
+                }
+                ElementState::Released => engine.eraser_released(),
+            }
+            window.request_redraw();
+            return;
+        }
         match state {
             ElementState::Pressed => {
                 engine
@@ -235,6 +238,7 @@ impl App {
             ElementState::Pressed => {
                 #[cfg(debug_assertions)]
                 engine.finish_test_interaction();
+                engine.eraser_released();
                 if !engine.canvas.is_panning() {
                     engine.canvas.start_pan();
                 }
@@ -254,6 +258,9 @@ impl App {
     fn handle_mouse_wheel(input: &InputManager, engine: &mut Engine, delta: Vec2, window: &Window) {
         #[cfg(debug_assertions)]
         if engine.test_spawner.is_dragging() {
+            return;
+        }
+        if engine.eraser.is_dragging() {
             return;
         }
         if input.is_ctrl() {
@@ -294,6 +301,9 @@ impl App {
             engine.draw.point(&mut engine.canvas, position);
             window.request_redraw();
         }
+        if engine.eraser.enabled && engine.eraser_moved(position) {
+            window.request_redraw();
+        }
         let panning =
             input.is_mouse_down(MouseButton::Right) || input.is_mouse_down(MouseButton::Middle);
         if panning {
@@ -306,6 +316,7 @@ impl App {
         #[cfg(debug_assertions)]
         engine.test_spawner.cancel_interaction(&mut engine.canvas);
         engine.draw.end(&mut engine.canvas);
+        engine.eraser_released();
         if engine.canvas.is_panning() {
             engine.canvas.cancel_pan();
         }

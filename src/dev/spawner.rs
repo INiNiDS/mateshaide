@@ -34,17 +34,7 @@ impl TestShapeSpec {
 pub enum TestMode {
     Spawn,
     Select,
-    Erase,
 }
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Erased {
-    PluginNode,
-    Text,
-    Shape,
-}
-
 
 #[derive(Debug, Clone, Copy)]
 enum TestDrag {
@@ -167,7 +157,6 @@ impl TestSpawner {
                     square: shift,
                 });
             }
-            TestMode::Erase => {}
             TestMode::Select => {
                 if let Some(index) = self.selected
                     && let Some(original) = canvas.instances.get(index).copied()
@@ -337,27 +326,6 @@ impl TestSpawner {
         self.palette_cursor = self.palette_cursor.wrapping_add(1);
         self.selected = None;
     }
-
-    pub fn erase_at_cursor(&mut self, canvas: &mut Canvas, registry: &ShapeRegistry) -> Option<Erased> {
-        if self.mode != Some(TestMode::Erase) {
-            return None;
-        }
-        let world = canvas.camera.screen_to_world(self.cursor_screen);
-        let erased = if let Some(i) = canvas.text_at_world(world) {
-            canvas.erase_text(i).then_some(Erased::Text)
-        } else if let Some(i) = canvas.plugin_node_at_world(world) {
-            canvas.erase_plugin_node(i).then_some(Erased::PluginNode)
-        } else if let Some(i) = geometry::pick(canvas, world, registry) {
-            canvas.erase_at(i).then_some(Erased::Shape)
-        } else {
-            None
-        };
-        if erased.is_some() {
-            self.clear_selection();
-        }
-        erased
-    }
-
     pub fn delete_selected(&mut self, canvas: &mut Canvas) {
         if self.mode != Some(TestMode::Select) {
             return;

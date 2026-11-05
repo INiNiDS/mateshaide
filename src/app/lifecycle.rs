@@ -117,10 +117,16 @@ impl ApplicationHandler for App {
             }
             window.request_redraw();
             return;
+        } else {
+            let update = self.input.process_event(&event, engine);
+            Self::handle_input_update(&self.input, engine, update, &window);
         }
-        let update = self.input.process_event(&event, engine);
 
-        Self::handle_input_update(&self.input, engine, update, &window);
+        let cursor = engine.cursor_icon();
+        if cursor != self.cursor {
+            self.cursor = cursor;
+            window.set_cursor(cursor);
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use crate::input::InputManager;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use winit::window::Window;
+use winit::window::{Window, CursorIcon};
 
 type Slot<T> = Rc<RefCell<Option<T>>>;
 
@@ -19,6 +19,7 @@ pub struct App {
     window: Slot<Arc<Window>>,
     engine: Slot<Engine>,
     input: InputManager,
+    cursor: CursorIcon
 }
 
 impl App {
@@ -33,6 +34,7 @@ impl App {
             window: Rc::new(RefCell::new(None)),
             engine: Rc::new(RefCell::new(None)),
             input,
+            cursor: CursorIcon::Default,
         }
     }
 }

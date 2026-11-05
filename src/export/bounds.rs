@@ -52,13 +52,7 @@ fn shape_rect(shape: &ShapeInstance) -> Rect {
     }
 }
 
-#[must_use]
-pub(crate) fn text_contains(text: &CanvasText, world: Vec2) -> bool {
-    let r = text_rect(text);
-    world.x >= r.min.x && world.x <= r.max.x && world.y >= r.min.y && world.y <= r.max.y
-}
-
-fn text_rect(text: &CanvasText) -> Rect {
+pub(crate) fn text_rect(text: &CanvasText) -> Rect {
     let mut max_columns = 0usize;
     let mut line_count = 0usize;
 

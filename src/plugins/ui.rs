@@ -66,6 +66,7 @@ pub enum UiAction {
     ResetView,
     ExportPng,
     ExportPdf,
+    ToggleEraser,
 }
 
 #[derive(Default)]
@@ -76,6 +77,7 @@ pub struct PluginPage {
     pub dialog_scroll: f32,
     pub quick_scroll: f32,
     pub draw_enabled: bool,
+    pub eraser_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -178,11 +180,16 @@ fn top_layout(width: f32, tool_widths: &[f32]) -> TopLayout {
     let lead = if brand { 102.0 } else { 0.0 };
 
     let raw_sys = [
-        68.0, 52.0, 52.0, 58.0, 52.0, 52.0, 38.0, 52.0, 38.0, 48.0, 48.0,
+        68.0, 52.0, 52.0, 58.0, 66.0, 52.0, 52.0, 38.0, 52.0, 38.0, 48.0, 48.0,
     ];
     let system_widths = fit_button_widths(&raw_sys, available, lead);
     let sys_natural = panel_width(&system_widths, lead).min(available);
-    let temp_panel = [UI_MARGIN, UI_MARGIN, UI_MARGIN + sys_natural, UI_MARGIN + 50.0];
+    let temp_panel = [
+        UI_MARGIN,
+        UI_MARGIN,
+        UI_MARGIN + sys_natural,
+        UI_MARGIN + 50.0,
+    ];
     let system_buttons = inset_buttons(temp_panel, &system_widths, lead);
     let sys_bottom = system_buttons
         .last()
@@ -428,6 +435,7 @@ impl PluginManager {
             (("Open", UiAction::Open), false),
             (("Save", UiAction::Save), false),
             (("Draw", UiAction::ToggleDraw), page.draw_enabled),
+            (("Eraser", UiAction::ToggleEraser), page.eraser_enabled),
             (("Undo", UiAction::Undo), false),
             (("Redo", UiAction::Redo), false),
             (("-", UiAction::ZoomOut), false),

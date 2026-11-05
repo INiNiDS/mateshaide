@@ -20,6 +20,7 @@ impl Engine {
         self.draw.end(&mut self.canvas);
         self.draw.enabled = false;
         self.canvas.cancel_pan();
+        self.set_eraser(false);
         self.test_spawner.toggle_mode(mode);
         if mode == TestMode::Spawn
             && self.test_spawner.current.is_none()
@@ -37,10 +38,6 @@ impl Engine {
         self.toggle_test_mode(TestMode::Select);
     }
 
-    pub fn toggle_test_eraser(&mut self) {
-        self.toggle_test_mode(TestMode::Erase);
-    }
-
     pub fn select_test_shape(&mut self, name: &'static str) {
         if self.test_spawner.mode != Some(TestMode::Spawn) {
             return;
@@ -52,20 +49,9 @@ impl Engine {
     }
 
     pub fn spawn_test_shape(&mut self) {
-        match self.test_spawner.mode {
-            Some(TestMode::Spawn) => self.test_spawner.spawn(&mut self.canvas),
-            Some(TestMode::Erase) => {
-                self.erase_test_at_cursor();
-            }
-            _ => {}
+        if self.test_spawner.mode == Some(TestMode::Spawn) {
+            self.test_spawner.spawn(&mut self.canvas);
         }
-    }
-
-    pub fn erase_test_at_cursor(&mut self) {
-        self.finish_test_interaction();
-        let erased = self
-            .test_spawner
-            .erase_at_cursor(&mut self.canvas, &self.shapes);
     }
 
     pub fn delete_test_selection(&mut self) {
