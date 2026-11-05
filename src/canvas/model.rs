@@ -74,6 +74,41 @@ impl Canvas {
         true
     }
 
+    #[must_use]
+    pub fn plugin_node_at_world(&self, world: Vec2) -> Option<usize> {
+        self.plugin_nodes.iter().rposition(|n| {
+            world.x >= n.x
+                && world.x <= n.x + n.width
+                && world.y <= n.y
+                && world.y >= n.y - n.height
+        })
+    }
+
+    #[must_use]
+    pub fn text_at_world(&self, world: Vec2) -> Option<usize> {
+       self.texts
+            .iter()
+            .rposition(|t| crate::export::bounds::text_contains(t, world))
+    }
+
+    pub fn erase_plugin_node(&mut self, index: usize) -> bool {
+        if index >= self.plugin_nodes.len() {
+            return false;
+        }
+        self.record_history();
+        self.plugin_nodes.remove(index);
+        true
+    }
+
+    pub fn erase_text(&mut self, index: usize) -> bool {
+        if index >= self.texts.len() {
+            return false;
+        }
+        self.record_history();
+        self.texts.remove(index);
+        true
+    }
+
     pub fn erase_at_world(&mut self, world: Vec2) -> bool {
         let idx = self
             .instances

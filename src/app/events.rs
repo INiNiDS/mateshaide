@@ -5,6 +5,9 @@ use winit::event::{ElementState, KeyEvent, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 
+#[cfg(debug_assertions)]
+use crate::dev::TestMode;
+
 const WHEEL_X_EPSILON: f32 = 0.001;
 const WHEEL_PAN_SCALE: f32 = 32.0;
 
@@ -73,23 +76,24 @@ impl App {
 
     fn handle_capture_key(event: &KeyEvent, engine: &mut Engine, window: &Window) {
         if event.state == ElementState::Pressed
-            && let PhysicalKey::Code(key) = event.physical_key {
-                match key {
-                    KeyCode::Escape => {
-                        engine.dismiss_capture();
-                        window.request_redraw();
-                    }
-                    KeyCode::KeyS if engine.is_in_capture_preview() => {
-                        engine.save_capture();
-                        window.request_redraw();
-                    }
-                    KeyCode::KeyC if engine.is_in_capture_preview() => {
-                        engine.copy_capture();
-                        window.request_redraw();
-                    }
-                    _ => {}
+            && let PhysicalKey::Code(key) = event.physical_key
+        {
+            match key {
+                KeyCode::Escape => {
+                    engine.dismiss_capture();
+                    window.request_redraw();
                 }
+                KeyCode::KeyS if engine.is_in_capture_preview() => {
+                    engine.save_capture();
+                    window.request_redraw();
+                }
+                KeyCode::KeyC if engine.is_in_capture_preview() => {
+                    engine.copy_capture();
+                    window.request_redraw();
+                }
+                _ => {}
             }
+        }
     }
 
     fn handle_capture_click(
@@ -167,6 +171,10 @@ impl App {
             return false;
         }
         match state {
+            ElementState::Pressed if engine.test_spawner.mode == Some(TestMode::Erase) => {
+                engine.test_spawner.cursor_screen = input.cursor_position();
+                engine.erase_test_at_cursor();
+            }
             ElementState::Pressed => {
                 engine.test_spawner.pointer_pressed(
                     &mut engine.canvas,

@@ -106,14 +106,6 @@ local BIG_OPS = {
 	["∏"] = true,
 }
 
-local INSERT_TEMPLATES = {
-	insert_int = "∫_{0}^{x} ",
-	insert_sum = "∑_{i=1}^{n} ",
-	insert_prod = "∏_{i=1}^{n} ",
-	insert_frac = "{a}//{b}",
-	insert_sqrt = "√{x}",
-	insert_lim = "lim_{x→0} ",
-}
 
 local SIZE_FACTORS = {
 	size_up = 1.18,
@@ -960,12 +952,6 @@ local function build_commands()
 
 	commands[#commands + 1] = { id = "size_down", label = "A-" }
 	commands[#commands + 1] = { id = "size_up", label = "A+" }
-	commands[#commands + 1] = { id = "insert_int", label = "∫ int" }
-	commands[#commands + 1] = { id = "insert_sum", label = "∑ sum" }
-	commands[#commands + 1] = { id = "insert_frac", label = "a//b" }
-	commands[#commands + 1] = { id = "insert_sqrt", label = "√x" }
-	commands[#commands + 1] = { id = "sup_mode", label = "xⁿ (Shift)" }
-	commands[#commands + 1] = { id = "sub_mode", label = "xₙ (Ctrl)" }
 
 	return commands
 end
@@ -1210,10 +1196,9 @@ local function delete_target(s, node)
 end
 
 local function apply_insert(s, ctx, node, action_id, custom_text)
-	local template = INSERT_TEMPLATES[action_id]
 	local is_script = action_id == "sup_mode" or action_id == "sub_mode"
 	local is_custom = action_id == "insert_text" and custom_text ~= nil
-	if not (template or is_script or is_custom) then
+	if not (is_script or is_custom) then
 		return array()
 	end
 
@@ -1223,9 +1208,7 @@ local function apply_insert(s, ctx, node, action_id, custom_text)
 		created = true
 	end
 
-	if template then
-		replace_selection(s, node, template, true)
-	elseif action_id == "sup_mode" then
+	if action_id == "sup_mode" then
 		insert_into_script(s, node, "^", "")
 	elseif action_id == "sub_mode" then
 		insert_into_script(s, node, "_", "")

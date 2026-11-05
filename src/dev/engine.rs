@@ -21,10 +21,12 @@ impl Engine {
         self.draw.enabled = false;
         self.canvas.cancel_pan();
         self.test_spawner.toggle_mode(mode);
-        if mode == TestMode::Spawn && self.test_spawner.current.is_none()
-            && let Some(kind) = self.shapes.kind("rect") {
-                self.test_spawner.select("rect", kind);
-            }
+        if mode == TestMode::Spawn
+            && self.test_spawner.current.is_none()
+            && let Some(kind) = self.shapes.kind("rect")
+        {
+            self.test_spawner.select("rect", kind);
+        }
     }
 
     pub fn toggle_test_spawn(&mut self) {
@@ -61,7 +63,8 @@ impl Engine {
 
     pub fn erase_test_at_cursor(&mut self) {
         self.finish_test_interaction();
-        self.test_spawner
+        let erased = self
+            .test_spawner
             .erase_at_cursor(&mut self.canvas, &self.shapes);
     }
 

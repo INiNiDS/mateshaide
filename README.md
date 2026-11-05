@@ -57,7 +57,7 @@ To draw any shape, you need to press 1 (make sure you are in test mode). The sha
 You can also hold the left mouse button and drag to set the size. The size that you dragged becomes the current size for the next shapes.
 Press [ or ] to make the current size smaller or bigger. Shift + [ / ] changes only the width, Alt + [ / ] changes only the height.
 
-By pressing Ctrl + 8, you will switch to erase mode. Press 1 or click the left mouse button to erase a shape.
+By pressing Ctrl + 8, you will switch to erase mode. Press 1 or click the left mouse button to erase a shape or a text block.
 
 ### Selection
 
