@@ -1,0 +1,11 @@
+id = "org.matesha.math-ui"
+name = "Math UI Builder"
+version = "1.0.0"
+description = "Interactive UI toolbar plugin for constructing mathematical formulas (integrals, sums, fractions //, roots, limits, superscripts/subscripts) and resizing/managing text blocks through Text Editor services."
+authors = ["Nikita Goncharov"]
+repository = "https://github.com/ininids/mateshaide"
+icon = "assets/icon.png"
+entry = "main.lua"
+api = "^1.0"
+permissions = ["plugins.call"]
+dependencies = [{ id = "org.matesha.text", version = "^1.0", repository = "https://github.com/ininids/mateshaide" }]

@@ -184,8 +184,8 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
 fn is_package_file(rel: &str) -> bool {
     rel == "plugin.aam"
         || std::path::Path::new(rel)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
         || rel.starts_with("assets/")
 }
 
@@ -313,8 +313,7 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
     }
 
     bundled!("text-editor");
-    bundled!("math-snippets");
-    bundled!("shapes");
+    bundled!("math-ui");
 
     for stored in super::platform::browser_packages() {
         match Package::from_files(stored, "browser storage".into()) {

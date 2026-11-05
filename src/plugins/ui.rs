@@ -58,6 +58,14 @@ pub enum UiAction {
     Import,
     ToggleDark,
     ToggleHalloween,
+    ToggleDraw,
+    Undo,
+    Redo,
+    ZoomIn,
+    ZoomOut,
+    ResetView,
+    ExportPng,
+    ExportPdf,
 }
 
 #[derive(Default)]
@@ -67,12 +75,13 @@ pub struct PluginPage {
     pub scroll: f32,
     pub dialog_scroll: f32,
     pub quick_scroll: f32,
+    pub draw_enabled: bool,
 }
 
 #[derive(Debug)]
 struct TopLayout {
     system: Rect,
-    system_buttons: [Rect; 3],
+    system_buttons: Vec<Rect>,
     brand: bool,
 
     themes: Rect,
@@ -86,11 +95,16 @@ struct TopLayout {
 
 fn inset_buttons(panel: Rect, widths: &[f32], lead: f32) -> Vec<Rect> {
     let mut x = panel[0] + PANEL_PAD + lead;
-    let y = panel[1] + PANEL_PAD;
+    let mut y = panel[1] + PANEL_PAD;
+    let max_right = panel[2] - PANEL_PAD + 0.01;
 
     widths
         .iter()
-        .map(|width| {
+        .map(|&width| {
+            if x > panel[0] + PANEL_PAD + lead && x + width > max_right {
+                x = panel[0] + PANEL_PAD;
+                y += BUTTON_HEIGHT + BUTTON_GAP;
+            }
             let r = [x, y, x + width, y + BUTTON_HEIGHT];
             x += width + BUTTON_GAP;
             r
@@ -101,7 +115,7 @@ fn inset_buttons(panel: Rect, widths: &[f32], lead: f32) -> Vec<Rect> {
 fn fit_button_widths(widths: &[f32], available: f32, lead: f32) -> Vec<f32> {
     let count = widths.len().max(1) as f32;
     let gaps = widths.len().saturating_sub(1) as f32 * BUTTON_GAP;
-    let max_width = ((available - 2.0 * PANEL_PAD - gaps - lead) / count).max(1.0);
+    let max_width = ((available - 2.0 * PANEL_PAD - gaps - lead) / count).max(42.0);
 
     widths.iter().map(|width| width.min(max_width)).collect()
 }
@@ -160,16 +174,20 @@ fn tool_layout(
 
 fn top_layout(width: f32, tool_widths: &[f32]) -> TopLayout {
     let available = (width - 2.0 * UI_MARGIN).max(1.0);
-    let brand = width >= 700.0;
-    let lead = if brand { 106.0 } else { 0.0 };
+    let brand = width >= 980.0;
+    let lead = if brand { 102.0 } else { 0.0 };
 
-    let system_widths = fit_button_widths(&[70.0, 54.0, 54.0], available, lead);
-    let system = [
-        UI_MARGIN,
-        UI_MARGIN,
-        UI_MARGIN + panel_width(&system_widths, lead),
-        UI_MARGIN + 50.0,
+    let raw_sys = [
+        68.0, 52.0, 52.0, 58.0, 52.0, 52.0, 38.0, 52.0, 38.0, 48.0, 48.0,
     ];
+    let system_widths = fit_button_widths(&raw_sys, available, lead);
+    let sys_natural = panel_width(&system_widths, lead).min(available);
+    let temp_panel = [UI_MARGIN, UI_MARGIN, UI_MARGIN + sys_natural, UI_MARGIN + 50.0];
+    let system_buttons = inset_buttons(temp_panel, &system_widths, lead);
+    let sys_bottom = system_buttons
+        .last()
+        .map_or(UI_MARGIN + 50.0, |b| b[3] + PANEL_PAD);
+    let system = [UI_MARGIN, UI_MARGIN, UI_MARGIN + sys_natural, sys_bottom];
 
     let theme_widths = fit_button_widths(&[88.0, 132.0], available, 0.0);
     let theme_width = panel_width(&theme_widths, 0.0);
@@ -196,12 +214,11 @@ fn top_layout(width: f32, tool_widths: &[f32]) -> TopLayout {
         initial_bottom,
     );
 
-    let system_buttons = inset_buttons(system, &system_widths, lead);
     let theme_buttons = inset_buttons(themes, &theme_widths, 0.0);
 
     TopLayout {
         system,
-        system_buttons: [system_buttons[0], system_buttons[1], system_buttons[2]],
+        system_buttons,
         brand,
         themes,
         theme_buttons: [theme_buttons[0], theme_buttons[1]],
@@ -386,7 +403,7 @@ impl PluginManager {
     fn draw_toolbar(
         &self,
         frame: &mut UiFrame,
-        _page: &PluginPage,
+        page: &PluginPage,
         camera: &Camera,
         [w, _h]: [f32; 2],
     ) {
@@ -406,15 +423,23 @@ impl PluginManager {
             );
         }
 
-        for ((label, action), bounds) in [
-            ("Plugins", UiAction::TogglePage),
-            ("Open", UiAction::Open),
-            ("Save", UiAction::Save),
+        for (((label, action), selected), bounds) in [
+            (("Plugins", UiAction::TogglePage), false),
+            (("Open", UiAction::Open), false),
+            (("Save", UiAction::Save), false),
+            (("Draw", UiAction::ToggleDraw), page.draw_enabled),
+            (("Undo", UiAction::Undo), false),
+            (("Redo", UiAction::Redo), false),
+            (("-", UiAction::ZoomOut), false),
+            (("100%", UiAction::ResetView), false),
+            (("+", UiAction::ZoomIn), false),
+            (("PNG", UiAction::ExportPng), false),
+            (("PDF", UiAction::ExportPdf), false),
         ]
         .into_iter()
         .zip(layout.system_buttons)
         {
-            frame.button(camera, bounds, label, action, false);
+            frame.button(camera, bounds, label, action, selected);
         }
 
         frame.floating_panel(camera, layout.themes);

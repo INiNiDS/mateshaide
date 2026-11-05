@@ -1,3 +1,4 @@
+use crate::export::ExportFormat;
 use crate::{
     Engine,
     plugins::{self, Scene, UiAction, UiFrame},
@@ -59,7 +60,8 @@ impl Engine {
         scene
     }
 
-    pub(crate) fn plugin_frame(&self) -> UiFrame {
+    pub(crate) fn plugin_frame(&mut self) -> UiFrame {
+        self.plugin_page.draw_enabled = self.draw.enabled;
         if self.is_capturing() {
             UiFrame::with_theme(self.plugins.settings.appearance.theme())
         } else {
@@ -115,6 +117,7 @@ impl Engine {
             UiAction::Tool(plugin_id, tool_id) => {
                 self.draw.end(&mut self.canvas);
                 self.draw.enabled = false;
+                self.plugin_page.draw_enabled = false;
 
                 #[cfg(debug_assertions)]
                 self.disable_test_tools();
@@ -159,6 +162,51 @@ impl Engine {
 
             UiAction::ToggleHalloween => {
                 self.toggle_appearance(false);
+            }
+
+            UiAction::ToggleDraw => {
+                self.clear_plugin_tool();
+                self.draw.end(&mut self.canvas);
+                #[cfg(debug_assertions)]
+                if !self.draw.enabled {
+                    self.disable_test_tools();
+                }
+                self.draw.toggle();
+                self.plugin_page.draw_enabled = self.draw.enabled;
+            }
+
+            UiAction::Undo => {
+                self.undo();
+            }
+
+            UiAction::Redo => {
+                self.redo();
+            }
+
+            UiAction::ZoomIn => {
+                #[cfg(debug_assertions)]
+                self.finish_test_interaction();
+                self.canvas.zoom_at_center(1.0);
+            }
+
+            UiAction::ZoomOut => {
+                #[cfg(debug_assertions)]
+                self.finish_test_interaction();
+                self.canvas.zoom_at_center(-1.0);
+            }
+
+            UiAction::ResetView => {
+                #[cfg(debug_assertions)]
+                self.finish_test_interaction();
+                self.canvas.reset_view();
+            }
+
+            UiAction::ExportPng => {
+                self.begin_png_capture();
+            }
+
+            UiAction::ExportPdf => {
+                crate::export::export_to_file(self, ExportFormat::Pdf);
             }
         }
 
@@ -286,20 +334,22 @@ impl Engine {
 
         if matches!(
             code,
-            KeyCode::KeyZ
-                | KeyCode::KeyY
-                | KeyCode::KeyE
-                | KeyCode::KeyP
-                | KeyCode::Digit9
-                | KeyCode::Equal
-                | KeyCode::Minus
-                | KeyCode::Digit0
-                | KeyCode::NumpadAdd
-                | KeyCode::NumpadSubtract
+            KeyCode::KeyZ | KeyCode::KeyY | KeyCode::KeyE | KeyCode::KeyP
         ) {
             return Some(self.plugin_page.open);
         }
-        if code == KeyCode::KeyX && !self.plugins.wants_text_input() {
+        if !self.plugins.wants_text_input()
+            && matches!(
+                code,
+                KeyCode::KeyX
+                    | KeyCode::Digit9
+                    | KeyCode::Equal
+                    | KeyCode::Minus
+                    | KeyCode::Digit0
+                    | KeyCode::NumpadAdd
+                    | KeyCode::NumpadSubtract
+            )
+        {
             return Some(self.plugin_page.open);
         }
         None
@@ -513,10 +563,22 @@ impl Engine {
             return true;
         }
 
-        let key = match &event.logical_key {
-            Key::Named(key) => format!("{key:?}"),
-            Key::Character(character) => character.to_lowercase(),
-            _ => String::new(),
+        let key = match event.physical_key {
+            PhysicalKey::Code(KeyCode::Digit0) => "0".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit1) => "1".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit2) => "2".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit3) => "3".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit4) => "4".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit5) => "5".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit6) => "6".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit7) => "7".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit8) => "8".to_owned(),
+            PhysicalKey::Code(KeyCode::Digit9) => "9".to_owned(),
+            _ => match &event.logical_key {
+                Key::Named(key) => format!("{key:?}"),
+                Key::Character(character) => character.to_lowercase(),
+                _ => String::new(),
+            },
         };
 
         let handled = self.send_plugin_event(&json!({
@@ -527,14 +589,18 @@ impl Engine {
             "alt": mods.alt_key()
         }));
 
-        if !ctrl && !mods.alt_key()
+        if !ctrl
+            && !mods.alt_key()
             && let Some(text) = &event.text
-                && !text.is_empty() && text.chars().all(|c| !c.is_control()) {
-                    self.send_plugin_event(&json!({
-                        "name": "text",
-                        "text": text.as_str()
-                    }));
-                }
+            && !text.is_empty()
+            && text.chars().all(|c| !c.is_control())
+        {
+            self.send_plugin_event(&json!({
+                "name": "text",
+                "text": text.as_str(),
+                "shift": shift
+            }));
+        }
 
         handled
     }
