@@ -73,6 +73,12 @@ pub fn families() -> Vec<String> {
             .collect()
     })
 }
+
+#[must_use]
+pub fn generation() -> usize {
+    REGISTRY.with_borrow(|registry| registry.fonts.len())
+}
+
 #[must_use]
 pub fn resolve(family: Option<&str>) -> String {
     match family {

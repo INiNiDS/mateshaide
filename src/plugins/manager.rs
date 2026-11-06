@@ -461,7 +461,15 @@ impl PluginManager {
         if let Some(error) = errors.first() {
             self.notice = format!("Render: {error}");
         }
+        self.prune_render_cache(nodes);
         scene
+    }
+
+    fn prune_render_cache(&mut self, nodes: &[PluginNode]) {
+        let live: BTreeSet<String> = nodes.iter().map(|n| format!("render: {}", n.id)).collect();
+        for runtime in self.entries.values_mut().filter_map(|e| e.runtime.as_mut()) {
+            runtime.retain_cached(|slot| slot == "overlay" || live.contains(slot));
+        }
     }
 
     fn render_node(
@@ -471,10 +479,6 @@ impl PluginManager {
         started: &web_time::Instant,
         scene: &mut Scene,
     ) -> Result<()> {
-        ensure!(
-            started.elapsed().as_millis() <= FRAME_TIME_BUDGET_MS,
-            "frame script budget exceeded"
-        );
         let focused = self.focus.as_deref() == Some(node.owner.as_str());
         let ctx = json_value(&json!({"zoom": zoom, "api": HOST_API, "focused": focused}))?;
 
@@ -487,7 +491,21 @@ impl PluginManager {
             "object type unavailable"
         );
         let runtime = e.runtime.as_mut().context("plugin disabled")?;
-        let out = runtime.pure_call("render", &[json_value(node)?, ctx])?;
+        let slot = format!("render: {}", node.id);
+        let within_budget = || {
+            ensure!(
+                started.elapsed().as_millis() <= FRAME_TIME_BUDGET_MS,
+                "frame script budget exceeded"
+            );
+            Ok(())
+        };
+        let out = runtime.cached_pure_call(
+            &slot,
+            "render",
+            &[json_value(node)?, ctx],
+            false,
+            within_budget,
+        )?;
         scene.extend_primitives(&out)?;
         Ok(())
     }
@@ -511,7 +529,13 @@ impl PluginManager {
         if !runtime.has("overlay") {
             return Ok(());
         }
-        let out = runtime.pure_call("overlay", &[json_value(&context).unwrap_or(Value::Null)])?;
+        let out = runtime.cached_pure_call(
+            "overlay",
+            "overlay",
+            &[json_value(&context).unwrap_or(Value::Null)],
+            true,
+            || Ok(())
+        )?;
         scene.extend_primitives(&out)?;
         Ok(())
     }

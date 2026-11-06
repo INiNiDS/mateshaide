@@ -6,7 +6,7 @@ use super::{manifest::valid_id, package::Package};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 pub(super) const JSON_SOURCE: &str = include_str!("json.lua");
 pub(super) const BOOTSTRAP_SOURCE: &str = include_str!("bootstrap.lua");
@@ -90,6 +90,9 @@ pub struct Runtime {
     entry: String,
     callbacks: BTreeSet<String>,
     pub state: Value,
+    pure_cache: HashMap<String, (String, Value)>,
+    #[cfg(test)]
+    pub lua_calls: usize,
 }
 
 impl Runtime {
@@ -100,6 +103,9 @@ impl Runtime {
             entry: package.manifest.entry.clone(),
             callbacks: BTreeSet::new(),
             state: json!({}),
+            pure_cache: HashMap::new(),
+            #[cfg(test)]
+            lua_calls: 0,
         })
     }
 
@@ -108,6 +114,10 @@ impl Runtime {
     }
 
     pub fn call(&mut self, name: &str, args: &[Value]) -> Result<Value> {
+        #[cfg(test)]
+        {
+            self.lua_calls += 1;
+        }
         let state = serde_json::to_string(&self.state)?;
         ensure!(state.len() <= MAX_STATE_BYTES, "plugin state limit");
 
@@ -147,6 +157,42 @@ impl Runtime {
         let out = self.call(name, args);
         self.state = previous;
         out
+    }
+
+    pub fn cached_pure_call(
+        &mut self,
+        slot: &str,
+        name: &str,
+        args: &[Value],
+        with_state: bool,
+        before_call: impl FnOnce() -> Result<()>,
+    ) -> Result<Value> {
+        let mut key = serde_json::to_string(args)?;
+        if with_state {
+            key.push('\n');
+            key.push_str(&serde_json::to_string(&self.state)?);
+        }
+        key.push('\n');
+        key.push_str(&crate::graphics::fonts::generation().to_string());
+
+        if let Some((cached_key, out)) = self.pure_cache.get(slot) && *cached_key == key {
+            return Ok(out.clone());
+        }
+
+        before_call()?;
+        let out = self.pure_call(name, args)?;
+        self.pure_cache.insert(slot.to_owned(), (key, out.clone()));
+        Ok(out)
+    }
+
+
+    #[cfg(test)]
+    pub fn has_cached(&self, slot: &str) -> bool {
+        self.pure_cache.contains_key(slot)
+    }
+
+    pub fn retain_cached(&mut self, keep: impl Fn(&str) -> bool) {
+        self.pure_cache.retain(|slot, _| keep(slot));
     }
 
     pub fn activate(&mut self) -> Result<Contributions> {

@@ -49,23 +49,13 @@ impl Helpers {
                 ensure!(text.len() <= MAX_GRAPHEME_TEXT_BYTES, "text limit");
                 json!(text.graphemes(true).collect::<Vec<_>>())
             }
-            "text_layout" => {
+            "text_layout" => self.text_layout(&args)?,
+            "grapheme_lengths" => {
                 let text = text_arg(&args)?;
-                let size = args["size"]
-                    .as_f64()
-                    .ok_or_else(|| anyhow::anyhow!("expected font size"))?;
-
-                ensure!(
-                    text.len() <= MAX_LAYOUT_TEXT_BYTES
-                        && size.is_finite()
-                        && (MIN_LAYOUT_FONT_SIZE..=MAX_LAYOUT_FONT_SIZE).contains(&size),
-                    "text layout limit"
-                );
-
-                let family = crate::graphics::fonts::resolve(args["font"].as_str());
-                crate::graphics::fonts::sync(&mut self.fonts, &mut self.fonts_loaded);
-                layout(&mut self.fonts, text, size as f32, &family)
+                ensure!(text.len() <= MAX_GRAPHEME_TEXT_BYTES, "text limit");
+                json!(text.graphemes(true).map(str::len).collect::<Vec<_>>())
             }
+            "text_layout_flat" => flat_layout(&self.text_layout(&args)?),
             "asset_list" => json!(
                 self.assets
                     .iter()
@@ -98,6 +88,7 @@ impl Helpers {
                 json!(crate::graphics::fonts::register(bytes)?)
             }
             "font_list" => json!(crate::graphics::fonts::families()),
+            "font_generation" => json!(crate::graphics::fonts::generation()),
             _ => bail!("unknown helper operation"),
         };
 
@@ -114,6 +105,24 @@ fn text_arg(args: &Value) -> Result<&str> {
 }
 
 impl Helpers {
+    fn text_layout(&mut self, args: &Value) -> Result<Value> {
+        let text = text_arg(args)?;
+        let size = args["size"]
+            .as_f64()
+            .ok_or_else(|| anyhow::anyhow!("expected font size"))?;
+
+        ensure!(
+            text.len() <= MAX_LAYOUT_TEXT_BYTES
+                && size.is_finite()
+                && (MIN_LAYOUT_FONT_SIZE..=MAX_LAYOUT_FONT_SIZE).contains(&size),
+            "text layout limit"
+        );
+
+        let family = crate::graphics::fonts::resolve(args["family"].as_str());
+        crate::graphics::fonts::sync(&mut self.fonts, &mut self.fonts_loaded);
+        Ok(layout(&mut self.fonts, text, size as f32, &family))
+    }
+
     fn asset(&self, args: &Value) -> Result<&Vec<u8>> {
         let path = args["path"]
             .as_str()
@@ -202,6 +211,26 @@ fn layout(fonts: &mut glyphon::FontSystem, text: &str, size: f32, family: &str) 
     }
 
     layout_json(width, size, &carets, &lines)
+}
+
+fn flat_layout(layout: &Value) -> Value {
+    let num = |v: &Value| v.as_f64().unwrap_or(0.0);
+    let lines = layout["lines"].as_array().map_or(&[][..], Vec::as_slice);
+    let carets = layout["carets"].as_array().map_or(&[][..], Vec::as_slice);
+    let mut out = Vec::with_capacity(4 + lines.len() * 4 + carets.len() * 3);
+    out.extend([
+        num(&layout["width"]),
+        num(&layout["height"]),
+        num(&layout["line_height"]),
+        lines.len() as f64,
+    ]);
+    for line in lines {
+        out.extend(["start", "end", "y", "width"].map(|k| num(&line[k])));
+    }
+    for caret in carets {
+        out.extend(["x", "y", "line"].map(|k| num(&caret[k])));
+    }
+    json!(out)
 }
 
 fn default_caret() -> Value {
