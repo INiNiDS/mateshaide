@@ -1,0 +1,10 @@
+id = "org.matesha.graphs"
+name = "Graphs"
+description = "Function plots on the canvas: y = f(x), x = g(y) and parametric (x(t), y(t)) in MateshaIDE formula syntax (x^{2}, √, π, //, |x|, implicit multiplication). Axes, grid, tick labels, auto range, pan (drag), zoom (wheel, Ctrl+drag, + / -), a colour per function, gaps at discontinuities (1/x, tan). Service plot.v1 creates a graph from formulas."
+authors = ["Nikita Goncharov"]
+repository = "https://github.com/ininids/mateshaide"
+icon = "assets/icon.png"
+entry = "main.lua"
+apui = "^1.0"
+permissions = ["document.write", "clipboard.read"]
+dependencies = []
