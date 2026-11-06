@@ -94,6 +94,7 @@ pub(super) fn seed_demo_shapes(engine: &mut Engine) {
         text: "Hello, MateshaIDE!".to_owned(),
         size: 24.0,
         color: palette::GRAY_900,
+        font: None,
     });
 
     engine.canvas.add_text(CanvasText {
@@ -101,5 +102,6 @@ pub(super) fn seed_demo_shapes(engine: &mut Engine) {
         text: HELP_TEXT.to_owned(),
         size: 16.0,
         color: palette::GRAY_700,
+        font: None,
     });
 }

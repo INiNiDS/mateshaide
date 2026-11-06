@@ -66,7 +66,9 @@ impl PdfBuilder {
         }
 
         let rgb = rgba
-            .as_chunks::<4>().0.iter()
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|px| [px[0], px[1], px[2]])
             .collect::<Vec<u8>>();
 

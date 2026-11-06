@@ -123,9 +123,10 @@ impl<Ctx> InputManager<Ctx> {
 
     pub fn process_event(&mut self, event: &WindowEvent, ctx: &mut Ctx) -> InputUpdate {
         if let Some(trigger) = self.track_state(event)
-            && self.try_trigger(trigger, ctx) {
-                return InputUpdate::ActionExecuted;
-            }
+            && self.try_trigger(trigger, ctx)
+        {
+            return InputUpdate::ActionExecuted;
+        }
 
         match event {
             WindowEvent::Focused(false) => InputUpdate::FocusLost,

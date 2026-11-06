@@ -38,7 +38,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    fn new(package: Package) -> Self {
+    pub(crate) fn new(package: Package) -> Self {
         Self {
             package,
             runtime: None,
@@ -77,6 +77,8 @@ struct Transaction {
     chain: Vec<String>,
     budget: usize,
     effects: Vec<String>,
+    /// Отложенный `file.pick`: (accept, token). Диалог открывается только если транзакция прошла.
+    pick: Option<(String, Value)>,
     started: web_time::Instant,
 }
 
@@ -87,6 +89,7 @@ impl Transaction {
             chain: vec![id.to_owned()],
             budget: EVENT_COMMAND_BUDGET,
             effects: Vec::new(),
+            pick: None,
             started: web_time::Instant::now(),
         }
     }
@@ -99,7 +102,7 @@ impl Default for PluginManager {
 }
 
 impl PluginManager {
-    fn with_settings(settings: Settings) -> Self {
+    pub(crate) fn with_settings(settings: Settings) -> Self {
         Self {
             entries: BTreeMap::new(),
             selected: None,
@@ -116,6 +119,9 @@ impl PluginManager {
     #[must_use]
     pub fn load() -> Self {
         let mut manager = Self::with_settings(super::platform::load_settings());
+        for bytes in super::platform::load_user_fonts() {
+            let _ = crate::graphics::fonts::register(bytes);
+        }
         manager.scan();
         manager.restore_enabled();
         manager
@@ -181,7 +187,10 @@ impl PluginManager {
 
         for dep in &e.package.manifest.dependencies {
             let other = self.entries.get(&dep.id).with_context(|| {
-                format!("Missing dependency {}. Download: {}", dep.id, dep.repository)
+                format!(
+                    "Missing dependency {}. Download: {}",
+                    dep.id, dep.repository
+                )
             })?;
             ensure!(
                 VersionReq::parse(&dep.version)?
@@ -283,7 +292,11 @@ impl PluginManager {
         }
         self.blur(canvas);
         self.selected = Some((plugin.into(), tool.into()));
-        self.dispatch(plugin, &json!({"name": "tool.selected", "tool": tool}), canvas);
+        self.dispatch(
+            plugin,
+            &json!({"name": "tool.selected", "tool": tool}),
+            canvas,
+        );
     }
 
     fn has_tool(&self, plugin: &str, tool: &str) -> bool {
@@ -327,11 +340,7 @@ impl PluginManager {
         let states: Vec<_> = self
             .entries
             .iter()
-            .filter_map(|(pid, e)| {
-                e.runtime
-                    .as_ref()
-                    .map(|r| (pid.clone(), r.state.clone()))
-            })
+            .filter_map(|(pid, e)| e.runtime.as_ref().map(|r| (pid.clone(), r.state.clone())))
             .collect();
         let focus = self.focus.clone();
         move |manager: &mut Self| {
@@ -361,7 +370,39 @@ impl PluginManager {
         for text in &tx.effects {
             super::platform::clipboard_write(text)?;
         }
+        if let Some((accept, token)) = tx.pick.take() {
+            super::platform::request_plugin_file(id, &accept, &token);
+        }
         Ok(())
+    }
+
+    pub fn deliver_file(&mut self, file: super::platform::PluginFile, canvas: &mut crate::Canvas) {
+        let super::platform::PluginFile {
+            plugin,
+            accept,
+            token,
+            name,
+            bytes,
+        } = file;
+        let result = match accept.as_str() {
+            "font" => crate::graphics::fonts::register(bytes.clone()).inspect(|_| {
+                if let Err(e) = super::platform::store_user_font(&bytes) {
+                    self.notice = format!("Font is available until restart: {e:#}");
+                }
+            }),
+            other => Err(anyhow::anyhow!("unsupported file kind: {other}")),
+        };
+        let event = match result {
+            Ok(family) => json!({
+                "name": "file.picked", "ok": true, "kind": accept,
+                "family": family, "file": name, "token": token,
+            }),
+            Err(e) => json!({
+                "name": "file.picked", "ok": false, "kind": accept,
+                "file": name, "token": token, "error": format!("{e:#}"),
+            }),
+        };
+        self.dispatch(&plugin, &event, canvas);
     }
 
     fn commit_nodes(&mut self, id: &str, canvas: &mut crate::Canvas, nodes: Vec<PluginNode>) {
@@ -382,8 +423,7 @@ impl PluginManager {
         self.end_history_group();
         for id in self.active_ids() {
             if let Ok(ctx) = self.context(&id, &canvas.plugin_nodes) {
-                let event = json_value(&json!({"name": "document.changed"}))
-                    .unwrap_or(Value::Null);
+                let event = json_value(&json!({"name": "document.changed"})).unwrap_or(Value::Null);
                 let _ = self.invoke(&id, "handle", &[event, ctx]);
             }
         }
@@ -414,9 +454,7 @@ impl PluginManager {
             }
         }
 
-        if overlay
-            && let Err(e) = self.render_overlay(nodes, zoom, &mut scene)
-        {
+        if overlay && let Err(e) = self.render_overlay(nodes, zoom, &mut scene) {
             errors.push(e.to_string());
         }
 
@@ -473,10 +511,7 @@ impl PluginManager {
         if !runtime.has("overlay") {
             return Ok(());
         }
-        let out = runtime.pure_call(
-            "overlay",
-            &[json_value(&context).unwrap_or(Value::Null)],
-        )?;
+        let out = runtime.pure_call("overlay", &[json_value(&context).unwrap_or(Value::Null)])?;
         scene.extend_primitives(&out)?;
         Ok(())
     }
@@ -517,8 +552,7 @@ impl PluginManager {
 
     fn fingerprints_approved(&self, plan: &[String]) -> bool {
         plan.iter().all(|p| {
-            self.settings.approved.get(p)
-                == self.entries.get(p).map(|e| &e.package.fingerprint)
+            self.settings.approved.get(p) == self.entries.get(p).map(|e| &e.package.fingerprint)
         })
     }
 
@@ -561,6 +595,19 @@ impl PluginManager {
             "call" => self.call_service(id, cmd, tx),
             "clipboard.write" => self.queue_clipboard_write(id, cmd, &mut tx.effects),
             "clipboard.read" => self.read_clipboard(id, tx),
+            "file.pick" => {
+                self.permission(id, "files.pick")?;
+                let accept = cmd["accept"].as_str().context("missing file kind")?;
+                ensure!(
+                    super::platform::PICKABLE
+                        .iter()
+                        .any(|(kind, _, _)| *kind == accept),
+                    "cannot pick files of kind {accept}"
+                );
+                ensure!(tx.pick.is_none(), "only one file.pick per event");
+                tx.pick = Some((accept.to_owned(), cmd["token"].clone()));
+                Ok(())
+            }
             _ => bail!("unknown host operation: {kind}"),
         }
     }
@@ -592,7 +639,10 @@ impl PluginManager {
 
         match kind {
             WriteKind::Create => {
-                ensure!(!nodes.iter().any(|n| n.id == node.id), "duplicate object ID");
+                ensure!(
+                    !nodes.iter().any(|n| n.id == node.id),
+                    "duplicate object ID"
+                );
                 nodes.push(node);
             }
             WriteKind::Update => {
@@ -664,9 +714,10 @@ impl PluginManager {
         ensure!(declared, "service target is not a declared dependency");
 
         let available = self.active(target)
-            && self.entries.get(target).is_some_and(|e| {
-                e.contributions.services.iter().any(|s| s == service)
-            });
+            && self
+                .entries
+                .get(target)
+                .is_some_and(|e| e.contributions.services.iter().any(|s| s == service));
         ensure!(available, "service unavailable");
         Ok(())
     }
@@ -679,7 +730,10 @@ impl PluginManager {
     ) -> Result<()> {
         self.permission(id, "clipboard.write")?;
         let text = cmd["text"].as_str().context("missing clipboard text")?;
-        ensure!(text.len() <= MAX_CLIPBOARD_BYTES, "clipboard output too large");
+        ensure!(
+            text.len() <= MAX_CLIPBOARD_BYTES,
+            "clipboard output too large"
+        );
         effects.push(text.into());
         Ok(())
     }
@@ -715,7 +769,7 @@ impl PluginManager {
         Ok(())
     }
 
-    fn start_plugin(&mut self, id: &str) -> Result<()> {
+    pub(crate) fn start_plugin(&mut self, id: &str) -> Result<()> {
         let e = self.entries.get_mut(id).context("plugin disappeared")?;
         let mut runtime = Runtime::new(&e.package)?;
         let contributions = runtime.activate()?;

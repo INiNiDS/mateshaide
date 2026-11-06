@@ -11,6 +11,7 @@ pub const PERMISSIONS: &[&str] = &[
     "plugins.call",
     "clipboard.read",
     "clipboard.write",
+    "files.pick",
 ];
 
 const MAX_MANIFEST_BYTES: usize = 65_536;

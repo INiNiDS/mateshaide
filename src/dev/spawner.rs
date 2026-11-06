@@ -160,16 +160,17 @@ impl TestSpawner {
             TestMode::Select => {
                 if let Some(index) = self.selected
                     && let Some(original) = canvas.instances.get(index).copied()
-                        && let Some(corner) = self.handle_at(canvas, registry, screen) {
-                            self.drag = Some(TestDrag::Resize {
-                                index,
-                                original,
-                                corner,
-                                grab_offset: world - corner.position(&original),
-                                anchor_screen: screen,
-                            });
-                            return true;
-                        }
+                    && let Some(corner) = self.handle_at(canvas, registry, screen)
+                {
+                    self.drag = Some(TestDrag::Resize {
+                        index,
+                        original,
+                        corner,
+                        grab_offset: world - corner.position(&original),
+                        anchor_screen: screen,
+                    });
+                    return true;
+                }
                 self.selected = geometry::pick(canvas, world, registry);
                 if let Some(index) = self.selected {
                     self.drag = Some(TestDrag::Move {
@@ -273,11 +274,12 @@ impl TestSpawner {
                 index, original, ..
             } => {
                 if let Some(result) = canvas.instances.get(index).copied()
-                    && result != original {
-                        canvas.instances[index] = original;
-                        canvas.record_history();
-                        canvas.instances[index] = result;
-                    }
+                    && result != original
+                {
+                    canvas.instances[index] = original;
+                    canvas.record_history();
+                    canvas.instances[index] = result;
+                }
             }
         }
     }

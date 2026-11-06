@@ -95,7 +95,6 @@ fn register_export_actions(input: &mut InputManager) {
     input.bind(Shortcut::key(KeyCode::KeyP).ctrl(), "export_pdf");
 }
 
-
 fn register_eraser_actions(input: &mut InputManager) {
     input.register_action("eraser", |engine: &mut Engine| {
         engine.set_eraser(true);

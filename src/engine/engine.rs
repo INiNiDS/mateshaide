@@ -329,12 +329,12 @@ impl Engine {
         if transition
             && let CaptureState::Converge { image, .. } =
                 std::mem::replace(&mut self.capture, CaptureState::Idle)
-            {
-                self.capture = CaptureState::Preview {
-                    image,
-                    shown_at: now,
-                };
-            }
+        {
+            self.capture = CaptureState::Preview {
+                image,
+                shown_at: now,
+            };
+        }
         true
     }
 
@@ -427,6 +427,7 @@ impl Engine {
                     text: btn.label.to_string(),
                     size: sz,
                     color: Color::WHITE.with_alpha(opacity),
+                    font: None,
                 }
             })
             .collect()

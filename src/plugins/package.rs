@@ -55,6 +55,14 @@ impl Package {
         })
     }
 
+    pub fn assets(&self) -> BTreeMap<String, Vec<u8>> {
+        self.files
+            .iter()
+            .filter(|(path, _)| path.starts_with("assets/"))
+            .map(|(path, bytes)| (path.clone(), bytes.clone()))
+            .collect()
+    }
+
     pub fn scripts(&self) -> Result<BTreeMap<String, String>> {
         self.files
             .iter()
@@ -289,8 +297,8 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
     let mut errors = Vec::new();
 
     macro_rules! bundled {
-        ($dir:literal) => {{
-            let files = BTreeMap::from([
+        ($dir:literal, [$($file:literal),* $(,)?]) => {{
+            let files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
                 (
                     "plugin.aam".into(),
                     include_bytes!(concat!("../../plugins/", $dir, "/plugin.aam")).to_vec(),
@@ -299,10 +307,10 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
                     "main.lua".into(),
                     include_bytes!(concat!("../../plugins/", $dir, "/main.lua")).to_vec(),
                 ),
-                (
-                    "assets/icon.png".into(),
-                    include_bytes!(concat!("../../plugins/", $dir, "/assets/icon.png")).to_vec(),
-                ),
+                $((
+                    $file.into(),
+                    include_bytes!(concat!("../../plugins/", $dir, "/", $file)).to_vec(),
+                ),)*
             ]);
 
             match Package::from_files(files, concat!("bundled:", $dir).into()) {
@@ -312,7 +320,7 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
         }};
     }
 
-    bundled!("text-editor");
+    bundled!("text-editor", ["assets/icon.png"]);
 
     for stored in super::platform::browser_packages() {
         match Package::from_files(stored, "browser storage".into()) {

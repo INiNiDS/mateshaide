@@ -20,29 +20,29 @@ pub(crate) fn build_instances(
         && let Some(shape) = tool
             .selected()
             .and_then(|index| canvas.instances.get(index))
-        {
-            let center = Vec2::from_array(shape.center);
-            let size = Vec2::from_array(shape.size);
-            let min = center - size / 2.0;
-            let max = center + size / 2.0;
-            let t = 1.5 / canvas.camera.zoom;
-            let color = palette::BLUE_500;
-            result.extend([
-                ShapeInstance::rect(min.x - t, min.y - t, size.x + 2.0 * t, t, color),
-                ShapeInstance::rect(min.x - t, max.y, size.x + 2.0 * t, t, color),
-                ShapeInstance::rect(min.x - t, min.y, t, size.y, color),
-                ShapeInstance::rect(max.x, min.y, t, size.y, color),
-            ]);
-            if geometry::can_resize(shape, registry) {
-                for corner in CORNERS {
-                    let p = corner.position(shape);
-                    let outer = HANDLE_PX / canvas.camera.zoom;
-                    let inner = (HANDLE_PX - 3.0) / canvas.camera.zoom;
-                    result.push(centered_rect(p, outer, color));
-                    result.push(centered_rect(p, inner, palette::WHITE));
-                }
+    {
+        let center = Vec2::from_array(shape.center);
+        let size = Vec2::from_array(shape.size);
+        let min = center - size / 2.0;
+        let max = center + size / 2.0;
+        let t = 1.5 / canvas.camera.zoom;
+        let color = palette::BLUE_500;
+        result.extend([
+            ShapeInstance::rect(min.x - t, min.y - t, size.x + 2.0 * t, t, color),
+            ShapeInstance::rect(min.x - t, max.y, size.x + 2.0 * t, t, color),
+            ShapeInstance::rect(min.x - t, min.y, t, size.y, color),
+            ShapeInstance::rect(max.x, min.y, t, size.y, color),
+        ]);
+        if geometry::can_resize(shape, registry) {
+            for corner in CORNERS {
+                let p = corner.position(shape);
+                let outer = HANDLE_PX / canvas.camera.zoom;
+                let inner = (HANDLE_PX - 3.0) / canvas.camera.zoom;
+                result.push(centered_rect(p, outer, color));
+                result.push(centered_rect(p, inner, palette::WHITE));
             }
         }
+    }
     debug_assert!(result.len() <= INSTANCES_CAP);
     result
 }
@@ -92,5 +92,6 @@ pub(crate) fn build_texts(canvas: &Canvas, tool: &TestSpawner) -> Vec<CanvasText
         size: 14.0 / canvas.camera.zoom,
         text,
         color: palette::GRAY_900,
+        font: None,
     }]
 }

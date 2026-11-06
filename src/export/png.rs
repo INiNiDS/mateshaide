@@ -29,7 +29,6 @@ pub enum CaptureState {
     },
 }
 
-
 impl CaptureState {
     #[must_use]
     pub fn is_idle(&self) -> bool {

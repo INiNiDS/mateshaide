@@ -95,7 +95,7 @@ pub struct Runtime {
 impl Runtime {
     pub fn new(package: &Package) -> Result<Self> {
         Ok(Self {
-            backend: Backend::new()?,
+            backend: Backend::new(package.assets())?,
             sources: serde_json::to_string(&package.scripts()?)?,
             entry: package.manifest.entry.clone(),
             callbacks: BTreeSet::new(),

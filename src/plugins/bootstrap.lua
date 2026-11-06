@@ -48,9 +48,25 @@ return function(json, host, clock, set_hook)
             env.join_text = function(a)
                 return table.concat(a)
             end
-            env.text_layout = function(text, size)
-                return helper('text_layout', { text = text, size = size })
+            env.text_layout = function(text, size, font)
+                return helper('text_layout', { text = text, size = size, font = font })
             end
+            env.assets = {
+                list = function()
+                    return helper('asset_list', {})
+                end,
+                read = function(path)
+                    return helper('asset_read', { path = path })
+                end,
+            }
+            env.fonts = {
+                load = function(path)
+                    return helper('font_load', { path = path })
+                end,
+                list = function()
+                    return helper('font_list', {})
+                end,
+            }
             env.replace_text = function(s, needle, replacement)
                 assert(type(s) == 'string' and type(needle) == 'string' and needle ~= '')
                 local out, at = {}, 1

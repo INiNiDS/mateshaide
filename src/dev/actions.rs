@@ -49,7 +49,6 @@ fn register_test_shape_actions(input: &mut InputManager) {
     );
 
     input.bind(Shortcut::key(KeyCode::Digit1), "test_spawn");
-
 }
 
 fn register_test_color_actions(input: &mut InputManager) {

@@ -3,7 +3,7 @@ use super::{
     runtime::{BOOTSTRAP_SOURCE, JSON_SOURCE},
 };
 use anyhow::{Context, Result};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 use wasm_bindgen::{JsCast, prelude::*};
 
 #[wasm_bindgen]
@@ -31,8 +31,8 @@ pub struct Backend {
     _host: Closure<dyn FnMut(String, String) -> std::result::Result<String, JsValue>>,
 }
 impl Backend {
-    pub fn new() -> Result<Self> {
-        let helpers = Rc::new(RefCell::new(Helpers::new()));
+    pub fn new(assets: BTreeMap<String, Vec<u8>>) -> Result<Self> {
+        let helpers = Rc::new(RefCell::new(Helpers::new(assets)));
         let host = Closure::wrap(Box::new(
             move |operation: String, input: String| -> std::result::Result<String, JsValue> {
                 Ok(helpers.borrow_mut().bridge(&operation, &input))

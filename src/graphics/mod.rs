@@ -1,4 +1,5 @@
 pub mod capture_overlay;
+pub mod fonts;
 pub mod overlay;
 pub mod pipeline;
 pub mod renderer;

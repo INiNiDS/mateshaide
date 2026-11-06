@@ -1,28 +1,34 @@
 use anyhow::{Result, bail, ensure};
 use glyphon::{LayoutGlyph, LayoutRun};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use unicode_segmentation::UnicodeSegmentation;
 
 const LINE_HEIGHT_FACTOR: f32 = 1.25;
-const UI_FONT_FAMILY: &str = "Roboto";
 const MAX_HELPER_INPUT_BYTES: usize = 524_288;
 const MAX_HELPER_OUTPUT_BYTES: usize = 1_048_576;
 const MAX_GRAPHEME_TEXT_BYTES: usize = 262_144;
 const MAX_LAYOUT_TEXT_BYTES: usize = 32_768;
 const MIN_LAYOUT_FONT_SIZE: f64 = 4.0;
 const MAX_LAYOUT_FONT_SIZE: f64 = 512.0;
+const MAX_ASSET_READ_BYTES: usize = 262_144;
+const FONT_EXTENSIONS: &[&str] = &["ttf", "otf", "ttc"];
 
 pub struct Helpers {
     fonts: glyphon::FontSystem,
+    fonts_loaded: usize,
+    assets: BTreeMap<String, Vec<u8>>,
 }
 
 impl Helpers {
-    pub fn new() -> Self {
-        let mut fonts = glyphon::FontSystem::new();
-        fonts
-            .db_mut()
-            .load_font_data(include_bytes!("../../assets/Roboto-Black.ttf").to_vec());
-        Self { fonts }
+    pub fn new(assets: BTreeMap<String, Vec<u8>>) -> Self {
+        let mut fonts_loaded = 0;
+        let fonts = crate::graphics::fonts::font_system(&mut fonts_loaded);
+        Self {
+            fonts,
+            fonts_loaded,
+            assets,
+        }
     }
 
     pub fn bridge(&mut self, operation: &str, input: &str) -> String {
@@ -36,16 +42,15 @@ impl Helpers {
         ensure!(input.len() < MAX_HELPER_INPUT_BYTES, "helper input limit");
 
         let args: Value = serde_json::from_str(input)?;
-        let text = args["text"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("expected UTF-8 string"))?;
 
         let result = match operation {
             "graphemes" => {
+                let text = text_arg(&args)?;
                 ensure!(text.len() <= MAX_GRAPHEME_TEXT_BYTES, "text limit");
                 json!(text.graphemes(true).collect::<Vec<_>>())
             }
             "text_layout" => {
+                let text = text_arg(&args)?;
                 let size = args["size"]
                     .as_f64()
                     .ok_or_else(|| anyhow::anyhow!("expected font size"))?;
@@ -57,8 +62,42 @@ impl Helpers {
                     "text layout limit"
                 );
 
-                layout(&mut self.fonts, text, size as f32)
+                let family = crate::graphics::fonts::resolve(args["font"].as_str());
+                crate::graphics::fonts::sync(&mut self.fonts, &mut self.fonts_loaded);
+                layout(&mut self.fonts, text, size as f32, &family)
             }
+            "asset_list" => json!(
+                self.assets
+                    .iter()
+                    .map(|(path, bytes)| json!({"path": path, "size": bytes.len()}))
+                    .collect::<Vec<_>>()
+            ),
+            "asset_read" => {
+                let bytes = self.asset(&args)?;
+                ensure!(
+                    bytes.len() <= MAX_ASSET_READ_BYTES,
+                    "asset too large to read"
+                );
+                json!(
+                    std::str::from_utf8(bytes)
+                        .map_err(|_| anyhow::anyhow!("asset is not UTF-8 text"))?
+                )
+            }
+            "font_load" => {
+                let path = args["path"].as_str().unwrap_or_default();
+                ensure!(
+                    std::path::Path::new(path)
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .is_some_and(
+                            |ext| FONT_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
+                        ),
+                    "font must be a .ttf/.otf/.ttc asset"
+                );
+                let bytes = self.asset(&args)?.clone();
+                json!(crate::graphics::fonts::register(bytes)?)
+            }
+            "font_list" => json!(crate::graphics::fonts::families()),
             _ => bail!("unknown helper operation"),
         };
 
@@ -68,14 +107,41 @@ impl Helpers {
     }
 }
 
-fn shaped_buffer(fonts: &mut glyphon::FontSystem, text: &str, size: f32) -> glyphon::Buffer {
+fn text_arg(args: &Value) -> Result<&str> {
+    args["text"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("expected UTF-8 string"))
+}
+
+impl Helpers {
+    fn asset(&self, args: &Value) -> Result<&Vec<u8>> {
+        let path = args["path"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("expected asset path"))?;
+        super::manifest::relative_name(path)?;
+        ensure!(
+            path.starts_with("assets/"),
+            "only assets/ files are readable"
+        );
+        self.assets
+            .get(path)
+            .ok_or_else(|| anyhow::anyhow!("asset not found: {path}"))
+    }
+}
+
+fn shaped_buffer(
+    fonts: &mut glyphon::FontSystem,
+    text: &str,
+    size: f32,
+    family: &str,
+) -> glyphon::Buffer {
     use glyphon::{Attrs, Buffer, Family, Metrics, Shaping, Wrap};
 
     let mut buffer = Buffer::new(fonts, Metrics::new(size, size * LINE_HEIGHT_FACTOR));
     buffer.set_wrap(Wrap::None);
     buffer.set_text(
         text,
-        &Attrs::new().family(Family::Name(UI_FONT_FAMILY)),
+        &Attrs::new().family(Family::Name(family)),
         Shaping::Advanced,
         None,
     );
@@ -108,8 +174,8 @@ fn fraction_before(run_text: &str, start: usize, end: usize, byte: usize) -> f32
     run_text[start..byte].graphemes(true).count() as f32 / count
 }
 
-fn layout(fonts: &mut glyphon::FontSystem, text: &str, size: f32) -> Value {
-    let buffer = shaped_buffer(fonts, text, size);
+fn layout(fonts: &mut glyphon::FontSystem, text: &str, size: f32, family: &str) -> Value {
+    let buffer = shaped_buffer(fonts, text, size, family);
     let graphemes: Vec<_> = text.grapheme_indices(true).collect();
 
     let mut carets = vec![default_caret(); graphemes.len() + 1];

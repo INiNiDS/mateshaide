@@ -11,6 +11,8 @@ pub mod platform;
 mod render;
 mod runtime;
 mod ui;
+#[cfg(test)]
+pub mod tests;
 
 pub use document::PluginNode;
 

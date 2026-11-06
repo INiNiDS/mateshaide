@@ -177,9 +177,6 @@ local function reset_drag(s)
 	s.interaction = ""
 end
 
--- Блок, созданный кликом/двойным кликом, живёт только в состоянии плагина (s.pending),
--- пока в него не введён первый символ: тогда он попадает в документ одним node.create
--- (один шаг undo). Пустой блок в документ и в историю не попадает вовсе.
 local function current_node(s, nodes)
 	local node = find_node(nodes, s.current)
 	if node then
@@ -229,20 +226,36 @@ local function is_expr_Atom_char(g)
 	return true
 end
 
-local function measure_text_width(text, size)
+local function is_escaped(gs, i)
+	return i > 1 and gs[i - 1] == "\\"
+end
+
+local function is_open_brace(gs, i)
+	return gs[i] == "{" and not is_escaped(gs, i)
+end
+
+local function is_close_brace(gs, i)
+	return gs[i] == "}" and not is_escaped(gs, i)
+end
+
+local function is_escape_mark(gs, i)
+	return gs[i] == "\\" and (gs[i + 1] == "{" or gs[i + 1] == "}")
+end
+
+local function measure_text_width(text, size, font)
 	if text == "" then
 		return 0.0
 	end
-	local l = text_layout(text, clamp_range(size, 4.0, 512.0))
+	local l = text_layout(text, clamp_range(size, 4.0, 512.0), font)
 	return l.width
 end
 
 local function find_matching_brace(gs, open_idx, total)
 	local depth = 0
 	for j = open_idx, total do
-		if gs[j] == "{" then
+		if is_open_brace(gs, j) then
 			depth = depth + 1
-		elseif gs[j] == "}" then
+		elseif is_close_brace(gs, j) then
 			depth = depth - 1
 			if depth == 0 then
 				return j
@@ -257,7 +270,7 @@ local function parse_script_group(gs, idx, total)
 		return idx, idx - 1, idx, idx - 1
 	end
 
-	if gs[idx] == "{" then
+	if is_open_brace(gs, idx) then
 		local close = find_matching_brace(gs, idx, total)
 		if close then
 			return idx, close, idx + 1, close - 1
@@ -278,17 +291,18 @@ end
 local function strip_braces(gs, s_idx, e_idx)
 	local out = ""
 	for k = s_idx, e_idx do
-		if gs[k] ~= "{" and gs[k] ~= "}" then
+		if not (is_open_brace(gs, k) or is_close_brace(gs, k) or is_escape_mark(gs, k)) then
 			out = out .. gs[k]
 		end
 	end
 	return out
 end
 
-local function new_line_builder(gs, line_start, line_end, base_size)
+local function new_line_builder(gs, line_start, line_end, base_size, font)
 	local b = {
 		gs = gs,
 		base = base_size,
+		font = font,
 		carets = {},
 		primitives = array(),
 		x = 0.0,
@@ -313,7 +327,8 @@ local function visible_chars(gs, s_idx, e_idx, hide_braces)
 	local chars, map, hidden = array(), {}, {}
 	for i = s_idx, e_idx do
 		local g = gs[i]
-		if hide_braces and (g == "{" or g == "}") then
+		local structural = is_open_brace(gs, i) or is_close_brace(gs, i)
+		if is_escape_mark(gs, i) or (hide_braces and structural) then
 			hidden[#hidden + 1] = i
 		else
 			chars[#chars + 1] = g
@@ -345,7 +360,7 @@ end
 local function place_brace_carets(b, s_idx, e_idx, x, y, h)
 	local gs = b.gs
 	for i = s_idx, e_idx do
-		if gs[i] == "}" then
+		if is_close_brace(gs, i) then
 			set_caret(b, i, x, y, h)
 		end
 	end
@@ -371,7 +386,7 @@ local function emit_span(b, s_idx, e_idx, x, y_offset, font_size, hide_braces)
 		return 0.0
 	end
 
-	local lay = text_layout(str, font_size)
+	local lay = text_layout(str, font_size, b.font)
 	push_primitive(b, {
 		kind = "text",
 		dx = x,
@@ -404,9 +419,9 @@ local function find_slash_pos(gs, i, line_end)
 	local paren = 0
 	for scan = i, line_end do
 		local g = gs[scan]
-		if g == "(" or g == "{" then
+		if g == "(" or is_open_brace(gs, scan) then
 			paren = paren + 1
-		elseif g == ")" or g == "}" then
+		elseif g == ")" or is_close_brace(gs, scan) then
 			paren = max(0, paren - 1)
 		end
 
@@ -425,9 +440,9 @@ local function find_denominator_end(gs, den_s, line_end)
 	local paren = 0
 	while den_e + 1 <= line_end do
 		local ng = gs[den_e + 1]
-		if ng == "(" or ng == "{" then
+		if ng == "(" or is_open_brace(gs, den_e + 1) then
 			paren = paren + 1
-		elseif ng == ")" or ng == "}" then
+		elseif ng == ")" or is_close_brace(gs, den_e + 1) then
 			if paren == 0 then
 				break
 			end
@@ -450,8 +465,8 @@ local function layout_fraction(b, i, slash_pos, line_end)
 	local num_str = strip_braces(gs, num_s, num_e)
 	local den_str = strip_braces(gs, den_s, den_e)
 
-	local num_w = max(10.0, measure_text_width(num_str, frac_size))
-	local den_w = max(10.0, measure_text_width(den_str, frac_size))
+	local num_w = max(10.0, measure_text_width(num_str, frac_size, b.font))
+	local den_w = max(10.0, measure_text_width(den_str, frac_size, b.font))
 	local bar_w = max(num_w, den_w) + base * 0.45
 	local pad_x = base * 0.12
 
@@ -503,15 +518,12 @@ local function read_limits(gs, idx, line_end)
 	return sub, sup, idx
 end
 
-local function limit_width(gs, info, lim_size)
+local function limit_width(gs, info, lim_size, font)
 	if not info then
 		return 0.0
 	end
-	local s_txt = ""
-	for k = info.s, info.e do
-		s_txt = s_txt .. gs[k]
-	end
-	return max(8.0, measure_text_width(s_txt, lim_size))
+	local s_txt = strip_braces(gs, info.s, info.e)
+	return max(8.0, measure_text_width(s_txt, lim_size, font))
 end
 
 local function grow_line(b, ink_top, ink_bottom)
@@ -524,14 +536,14 @@ local function layout_big_op(b, i, line_end)
 	local gs, base = b.gs, b.base
 	local op_char = gs[i]
 	local op_size = clamp_range(base * 1.38, 4.0, 512.0)
-	local op_w = measure_text_width(op_char, op_size)
+	local op_w = measure_text_width(op_char, op_size, b.font)
 	local ink = OP_INK[op_char] or OP_INK["∫"]
 
 	local sub_info, sup_info, next_idx = read_limits(gs, i + 1, line_end)
 
 	local lim_size = clamp_range(base * 0.62, 4.0, 512.0)
-	local sup_w = limit_width(gs, sup_info, lim_size)
-	local sub_w = limit_width(gs, sub_info, lim_size)
+	local sup_w = limit_width(gs, sup_info, lim_size, b.font)
+	local sub_w = limit_width(gs, sub_info, lim_size, b.font)
 
 	local op_dy = base * OP_RAISE
 	local op_base = baseline_of(op_dy, op_size)
@@ -665,8 +677,8 @@ local function layout_text_run(b, i, line_end)
 	return run_e + 1
 end
 
-local function build_visual_line(gs, line_start, line_end, base_size)
-	local b = new_line_builder(gs, line_start, line_end, base_size)
+local function build_visual_line(gs, line_start, line_end, base_size, font)
+	local b = new_line_builder(gs, line_start, line_end, base_size, font)
 
 	local i = line_start
 	while i <= line_end do
@@ -698,7 +710,7 @@ local function build_visual_line(gs, line_start, line_end, base_size)
 	}
 end
 
-local function build_node_layout(text, size)
+local function build_node_layout(text, size, font)
 	size = clamp_range(size or 26.0, MIN_FONT_SIZE, MAX_FONT_SIZE)
 	local gs = graphemes(text)
 	local n = #gs
@@ -724,7 +736,7 @@ local function build_node_layout(text, size)
 	local y_cursor = 0.0
 
 	for row_idx, r in ipairs(line_ranges) do
-		local vline = build_visual_line(gs, r.s, r.e, size)
+		local vline = build_visual_line(gs, r.s, r.e, size, font)
 		local extra_top = max(0.0, vline.ascent - size)
 		local baseline_top = y_cursor + extra_top
 		local row_h = vline.height
@@ -784,7 +796,7 @@ local function build_node_layout(text, size)
 end
 
 local function geometry(node)
-	local layout = build_node_layout(node.data.text, node.data.size)
+	local layout = build_node_layout(node.data.text, node.data.size, node.data.font)
 	node.width = max(36.0, layout.width + 16.0)
 	node.height = max(node.data.size * 1.3, layout.height + 8.0)
 	return node
@@ -805,6 +817,7 @@ local function new_node(s, ctx, x, y, text)
 			text = text,
 			size = s.size,
 			color = copy_color(s.color),
+			font = s.font,
 		},
 	})
 
@@ -913,23 +926,26 @@ local function replace_selection(s, node, text, skip_autoreplace)
 	return geometry(node)
 end
 
-local function insert_into_script(s, node, script_op, content)
-	local gs = graphemes(node.data.text)
-	local caret = clamp(s.caret, #gs)
-
-	local open_brace = nil
+local function enclosing_open_brace(gs, caret)
 	local depth = 0
 	for i = caret, 1, -1 do
-		if gs[i] == "}" then
+		if is_close_brace(gs, i) then
 			depth = depth + 1
-		elseif gs[i] == "{" then
+		elseif is_open_brace(gs, i) then
 			if depth == 0 then
-				open_brace = i
-				break
+				return i
 			end
 			depth = depth - 1
 		end
 	end
+	return nil
+end
+
+local function insert_into_script(s, node, script_op, content)
+	local gs = graphemes(node.data.text)
+	local caret = clamp(s.caret, #gs)
+
+	local open_brace = enclosing_open_brace(gs, caret)
 
 	if open_brace and open_brace > 1 and gs[open_brace - 1] == script_op then
 		return replace_selection(s, node, content, false)
@@ -970,7 +986,7 @@ local function selected_text(s, node)
 end
 
 local function index_at(node, x, y)
-	local l = build_node_layout(node.data.text, node.data.size)
+	local l = build_node_layout(node.data.text, node.data.size, node.data.font)
 	local local_x = x - node.x - 6.0
 	local local_y = node.y - y - 4.0
 
@@ -1012,7 +1028,7 @@ local function move_cursor(s, node, key, ctrl, shift)
 	if key == "ArrowLeft" or key == "ArrowRight" then
 		s.caret = horizontal_caret(s, length, key, shift)
 	else
-		local l = build_node_layout(node.data.text, node.data.size)
+		local l = build_node_layout(node.data.text, node.data.size, node.data.font)
 		local c = l.carets[s.caret + 1] or { x = 0.0, y = 0.0, line = 0 }
 		if key == "Home" then
 			s.caret = ctrl and 0 or l.lines[c.line + 1].start
@@ -1053,6 +1069,8 @@ local function build_commands()
 
 	commands[#commands + 1] = { id = "size_down", label = "A-" }
 	commands[#commands + 1] = { id = "size_up", label = "A+" }
+	commands[#commands + 1] = { id = "font_next", label = "Font >" }
+	commands[#commands + 1] = { id = "font_pick", label = "Font..." }
 
 	return commands
 end
@@ -1063,7 +1081,7 @@ function P.activate(s)
 	s.caret = 0
 	s.anchor = 0
 	s.dragging = false
-	s.interaction = "" -- "", "select", "resize", "move"
+	s.interaction = ""
 	s.resize_corner = 0
 	s.start_x = 0.0
 	s.start_y = 0.0
@@ -1077,6 +1095,15 @@ function P.activate(s)
 	s.shift_sup = true
 	s.pending_script = ""
 	s.color = { 0.12, 0.15, 0.22, 1.0 }
+	s.font = nil
+	s.font_target = ""
+
+	for _, asset in ipairs(assets.list()) do
+		local ext = string.lower(string.match(asset.path, "^assets/fonts/.+%.(%a+)$") or "")
+		if ext == "ttf" or ext == "otf" then
+			fonts.load(asset.path)
+		end
+	end
 
 	return {
 		tools = { { id = "text", label = "Text / Math", text_input = true } },
@@ -1202,8 +1229,6 @@ local function begin_node_drag(s, node, event)
 	return false
 end
 
--- Завершение ввода (Escape, клик мимо, blur, смена инструмента):
--- несохранённый s.pending просто забывается, ставший пустым блок удаляется.
 local function finish_editing(s, ctx)
 	s.preedit = ""
 	reset_drag(s)
@@ -1232,8 +1257,6 @@ local function pointer_down(s, ctx, event)
 	local hit = find_hit(ctx.nodes, event.x, event.y)
 
 	if not hit then
-		-- Как в Excalidraw: клик мимо во время ввода только завершает его,
-		-- следующий клик по пустому месту создаёт новый блок.
 		if ctx.focused and (s.pending or current) then
 			return finish_editing(s, ctx)
 		end
@@ -1283,6 +1306,15 @@ local function handle_delete(s, node, key)
 
 	if s.caret == s.anchor then
 		s.anchor = key == "Backspace" and max(0, s.caret - 1) or min(length, s.caret + 1)
+		local lo = min(s.caret, s.anchor)
+		if is_escape_mark(gs, lo) then
+			lo = lo - 1
+		end
+		local hi = max(s.caret, s.anchor)
+		if is_escape_mark(gs, hi) then
+			hi = hi + 1
+		end
+		s.caret, s.anchor = hi, lo
 	end
 
 	if s.caret == s.anchor then
@@ -1300,6 +1332,43 @@ local function apply_color(s, ctx, color)
 	end
 	node.data.color = copy_color(color)
 	return { { kind = "node.update", node = node } }
+end
+
+local function normalize_font(family)
+	if family == nil or family == "" or family == fonts.list()[1] then
+		return nil
+	end
+	return family
+end
+
+local function apply_font(s, node, family)
+	s.font = normalize_font(family)
+	if not node then
+		return array()
+	end
+	node.data.font = s.font
+	geometry(node)
+	return { { kind = "node.update", node = node } }
+end
+
+local function next_font(current)
+	local list = fonts.list()
+	local cur = current or list[1]
+	for i, family in ipairs(list) do
+		if family == cur then
+			return list[i % #list + 1]
+		end
+	end
+	return list[1]
+end
+
+local function handle_file_picked(s, ctx, event)
+	if not event.ok or event.kind ~= "font" then
+		return array()
+	end
+	local node = find_node(ctx.nodes, s.font_target)
+	s.font_target = ""
+	return apply_font(s, node, event.family)
 end
 
 local function resolve_target(s, ctx)
@@ -1363,6 +1432,20 @@ local function execute_editor_action(s, ctx, action_id, custom_text)
 	local color = PALETTE_BY_ID[action_id]
 	if color then
 		return apply_color(s, ctx, color)
+	end
+
+	if action_id == "font_next" then
+		local node = current_node(s, ctx.nodes)
+		local cur = s.font
+		if node then
+			cur = node.data.font
+		end
+		return apply_font(s, node, next_font(cur))
+	end
+	if action_id == "font_pick" then
+		local node = current_node(s, ctx.nodes)
+		s.font_target = node and node.id or ""
+		return { { kind = "file.pick", accept = "font" } }
 	end
 
 	local node = resolve_target(s, ctx)
@@ -1466,6 +1549,9 @@ local function handle_document_changed(s, ctx)
 end
 
 local function try_superscript_input(s, node, text)
+	if not string.match(text, "^%a$") then
+		return nil
+	end
 	local gs = graphemes(node.data.text)
 	local prev = s.caret > 0 and gs[s.caret] or ""
 	if prev == "" or prev == " " or prev == "\n" then
@@ -1474,9 +1560,44 @@ local function try_superscript_input(s, node, text)
 	return { { kind = "node.update", node = insert_into_script(s, node, "^", string.lower(text)) } }
 end
 
+local function try_brace_input(s, node, text)
+	if text ~= "{" and text ~= "}" then
+		return nil
+	end
+	local gs = graphemes(node.data.text)
+	local caret = clamp(s.caret, #gs)
+	if s.anchor ~= s.caret or is_escaped(gs, caret + 1) then
+		return nil
+	end
+	if text == "{" then
+		local result = replace_selection(s, node, "{}", true)
+		s.caret = s.caret - 1
+		s.anchor = s.caret
+		return { { kind = "node.update", node = result } }
+	end
+	local open = enclosing_open_brace(gs, caret)
+	if not open then
+		return nil
+	end
+	if is_close_brace(gs, caret + 1) then
+		s.caret = caret + 1
+		s.anchor = s.caret
+		return array()
+	end
+	return { { kind = "node.update", node = replace_selection(s, node, "\\}", true) } }
+end
+
 local function handle_text_input(s, node, text, is_typed)
 	if text == "" then
 		return array()
+	end
+
+	if is_typed then
+		local brace = try_brace_input(s, node, text)
+		if brace then
+			s.last_shift_char = false
+			return brace
+		end
 	end
 
 	if is_typed and s.last_shift_char and #graphemes(text) == 1 then
@@ -1512,6 +1633,10 @@ handle_event = function(s, event, ctx)
 		return handle_document_changed(s, ctx)
 	end
 
+	if name == "file.picked" then
+		return handle_file_picked(s, ctx, event)
+	end
+
 	if name == "pointer" then
 		return handle_pointer(s, ctx, event)
 	end
@@ -1541,7 +1666,7 @@ handle_event = function(s, event, ctx)
 end
 
 function P.render(s, node, ctx)
-	local l = build_node_layout(node.data.text, node.data.size)
+	local l = build_node_layout(node.data.text, node.data.size, node.data.font)
 	local out = array()
 	local base_x = node.x + 6.0
 	local base_y = node.y - 4.0
@@ -1554,6 +1679,7 @@ function P.render(s, node, ctx)
 				y = base_y - p.dy,
 				text = p.text,
 				size = p.size,
+				font = node.data.font,
 				color = node.data.color,
 			}
 		elseif p.kind == "line" then
@@ -1638,7 +1764,7 @@ function P.overlay(s, ctx)
 		return out
 	end
 
-	local l = build_node_layout(node.data.text, node.data.size)
+	local l = build_node_layout(node.data.text, node.data.size, node.data.font)
 	local caret = clamp(s.caret, #l.carets - 1)
 	local lo = clamp(min(s.anchor, s.caret), #l.carets - 1)
 	local hi = clamp(max(s.anchor, s.caret), #l.carets - 1)

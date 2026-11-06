@@ -521,7 +521,6 @@ impl Engine {
         }
     }
 
-
     #[must_use]
     pub fn text_tool_selected(&self) -> bool {
         self.plugins
@@ -693,6 +692,9 @@ impl Engine {
             match request {
                 plugins::platform::Request::Document(bytes) => self.open_plugin_document(&bytes),
                 plugins::platform::Request::Package(bytes) => self.install_plugin_package(&bytes),
+                plugins::platform::Request::PluginFile(file) => {
+                    self.plugins.deliver_file(file, &mut self.canvas);
+                }
                 plugins::platform::Request::Error(error) => self.plugins.notice = error,
                 plugins::platform::Request::Event(event) => self.handle_plugin_message(&event),
             }

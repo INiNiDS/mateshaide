@@ -7,5 +7,5 @@ repository = "https://github.com/ininids/mateshaide"
 icon = "assets/icon.png"
 entry = "main.lua"
 api = "^1.0"
-permissions = ["document.write", "clipboard.read", "clipboard.write"]
+permissions = ["document.write", "clipboard.read", "clipboard.write", "files.pick"]
 dependencies = []

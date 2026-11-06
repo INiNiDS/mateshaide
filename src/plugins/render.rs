@@ -43,11 +43,20 @@ impl Scene {
                     let size = num(p, "size")?;
                     ensure!((4.0..=512.0).contains(&size), "font size limit");
 
+                    let font = match p.get("font") {
+                        None | Some(Value::Null) => None,
+                        Some(v) => {
+                            let name = v.as_str().context("font must be a string")?;
+                            ensure!(name.len() <= 64, "font name limit");
+                            Some(name.to_owned())
+                        }
+                    };
                     texts.push(CanvasText {
                         position: Vec2::new(num(p, "x")?, num(p, "y")?),
                         text: text.into(),
                         size,
                         color: c,
+                        font,
                     });
                 }
                 "rect" => {
@@ -98,6 +107,7 @@ impl Scene {
             text: format!("{} (unavailable)", n.owner),
             size: 12.0,
             color: Color::rgb(0.9, 0.55, 0.2),
+            font: None,
         });
     }
 }
@@ -298,6 +308,7 @@ impl UiFrame {
             text: text.into(),
             size: size / camera.zoom,
             color,
+            font: None,
         });
     }
 
