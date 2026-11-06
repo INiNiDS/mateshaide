@@ -509,6 +509,18 @@ impl Engine {
                 self.send_pointer_event("move", position, ctrl, shift)
             }
 
+            WindowEvent::MouseWheel { delta, .. } if self.plugin_wants_wheel(position) => {
+                let world = self.canvas.camera.screen_to_world(position);
+                self.send_plugin_event(&json!({
+                    "name": "wheel",
+                    "x": world.x,
+                    "y": world.y,
+                    "delta": Self::wheel_delta_y(delta),
+                    "ctrl": ctrl,
+                    "shift": shift
+                }))
+            }
+
             WindowEvent::KeyboardInput { event, .. }
                 if self.plugins.selected.is_some()
                     && event.state == ElementState::Pressed
@@ -519,6 +531,27 @@ impl Engine {
 
             _ => false,
         }
+    }
+
+    fn plugin_wants_wheel(&self, position: Vec2) -> bool {
+        let Some((plugin, tool)) = &self.plugins.selected else {
+            return false;
+        };
+        let wants = self.plugins.entries.get(plugin).is_some_and(|e| {
+            e.contributions
+                .tools
+                .iter()
+                .any(|t| t.id == *tool && t.wheel)
+        });
+        let p = self.canvas.camera.screen_to_world(position);
+        wants
+            && self.canvas.plugin_nodes.iter().any(|n| {
+                n.owner == *plugin
+                    && p.x >= n.x
+                    && p.x <= n.x + n.width
+                    && p.y <= n.y
+                    && p.y >= n.y - n.height
+            })
     }
 
     #[must_use]

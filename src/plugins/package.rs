@@ -321,6 +321,7 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
     }
 
     bundled!("text-editor", ["assets/icon.png"]);
+    bundled!("graph", ["expr.lua", "plot.lua", "assets/icon.png"]);
 
     for stored in super::platform::browser_packages() {
         match Package::from_files(stored, "browser storage".into()) {

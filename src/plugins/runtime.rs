@@ -60,6 +60,8 @@ pub struct Tool {
     pub text_input: bool,
     #[serde(default)]
     pub style: ButtonStyle,
+    #[serde(default)]
+    pub wheel: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
