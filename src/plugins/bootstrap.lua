@@ -6,7 +6,7 @@ return function(json, host, clock, set_hook)
         originals[name] = _G[name]
     end
     local libraries = { math = math, string = string, table = table, utf8 = utf8 }
-    local callbacks = { 'activate', 'handle', 'render', 'overlay', 'service', 'deactivate' }
+    local callbacks = { 'activate', 'handle', 'render', 'overlay', 'service', 'deactivate', 'panel' }
     local cached_files, cached_sources, compiled = nil, nil, {}
     local function package_sources(files_json)
         if files_json ~= cached_files then

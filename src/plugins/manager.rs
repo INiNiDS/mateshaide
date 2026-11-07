@@ -64,6 +64,7 @@ pub struct PluginManager {
     serial: u64,
     history_group: Option<String>,
     group_recorded: bool,
+    pub(crate) panel_host: super::panel::PanelHost,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -77,7 +78,6 @@ struct Transaction {
     chain: Vec<String>,
     budget: usize,
     effects: Vec<String>,
-    /// Отложенный `file.pick`: (accept, token). Диалог открывается только если транзакция прошла.
     pick: Option<(String, Value)>,
     started: web_time::Instant,
 }
@@ -113,6 +113,7 @@ impl PluginManager {
             serial: 1,
             history_group: None,
             group_recorded: false,
+            panel_host: super::panel::PanelHost::default(),
         }
     }
 
@@ -468,7 +469,7 @@ impl PluginManager {
     fn prune_render_cache(&mut self, nodes: &[PluginNode]) {
         let live: BTreeSet<String> = nodes.iter().map(|n| format!("render: {}", n.id)).collect();
         for runtime in self.entries.values_mut().filter_map(|e| e.runtime.as_mut()) {
-            runtime.retain_cached(|slot| slot == "overlay" || live.contains(slot));
+            runtime.retain_cached(|slot| slot == "overlay" || slot == "panel" || live.contains(slot));
         }
     }
 

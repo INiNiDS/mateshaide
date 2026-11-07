@@ -12,6 +12,7 @@ pub const PERMISSIONS: &[&str] = &[
     "clipboard.read",
     "clipboard.write",
     "files.pick",
+    "help.read"
 ];
 
 const MAX_MANIFEST_BYTES: usize = 65_536;

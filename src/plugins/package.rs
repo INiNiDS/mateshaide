@@ -320,8 +320,28 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
         }};
     }
 
-    bundled!("text-editor", ["assets/icon.png"]);
+    bundled!(
+        "text-editor",
+        ["assets/icon.png", "assets/help/text-editor.md"]
+    );
     bundled!("graph", ["expr.lua", "plot.lua", "assets/icon.png"]);
+    bundled!(
+        "matesha-help",
+        [
+            "assets/help/01-overview.md",
+            "assets/help/03-formulas.md",
+            "assets/help/04-eraser.md",
+            "assets/help/05-fonts.md",
+            "assets/help/06-hotkeys.md",
+            "assets/help/07-plugins.md",
+            "assets/help/10-api-manifest.md",
+            "assets/help/11-api-callbacks.md",
+            "assets/help/12-api-events-commands.md",
+            "assets/help/13-api-assets-fonts-files.md",
+            "assets/help/14-api-permissions.md",
+            "assets/help/15-api-help-pages.md",
+        ]
+    );
 
     for stored in super::platform::browser_packages() {
         match Package::from_files(stored, "browser storage".into()) {

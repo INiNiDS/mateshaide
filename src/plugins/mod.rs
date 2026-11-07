@@ -13,11 +13,13 @@ mod runtime;
 mod ui;
 #[cfg(test)]
 pub mod tests;
+mod panel;
 
 pub use document::PluginNode;
 
 pub const TEXT_PLUGIN: &str = "org.matesha.text";
 pub const TEXT_TOOL: &str = "text";
+pub const HELP_PLUGIN: &str = "org.matesha.help";
 
 pub use manager::PluginManager;
 pub use render::{Scene, UiFrame};

@@ -70,6 +70,9 @@ impl Engine {
         self.plugin_page.draw_enabled = self.draw.enabled;
         self.plugin_page.eraser_enabled = self.eraser.enabled;
         self.plugin_page.text_enabled = self.text_tool_selected();
+        if !self.plugin_page.open && !self.is_capturing() {
+            self.plugins.refresh_panels(&self.canvas.camera)
+        }
         if self.is_capturing() {
             UiFrame::with_theme(self.plugins.settings.appearance.theme())
         } else {
@@ -156,6 +159,12 @@ impl Engine {
                     &mut self.canvas,
                 );
             }
+
+            UiAction::PanelButton(plugin_id, button_id) => self.plugins.dispatch(
+                &plugin_id,
+                &json!({"name": "panel.click", "id": button_id}),
+                &mut self.canvas,
+            ),
 
             UiAction::Save => match self.canvas.document_bytes() {
                 Ok(bytes) => {
@@ -328,6 +337,18 @@ impl Engine {
             self.plugin_action(UiAction::Open);
             return Some(true);
         }
+
+        if code == KeyCode::F1
+            && !self.plugin_page.open
+            && self.plugins.active(plugins::HELP_PLUGIN)
+        {
+            self.plugin_action(UiAction::Command(
+                plugins::HELP_PLUGIN.into(),
+                "toggle".into(),
+            ));
+            return Some(true);
+        }
+
         if code == KeyCode::F5 && self.plugin_page.open {
             self.plugin_action(UiAction::Rescan);
             return Some(true);
@@ -381,7 +402,8 @@ impl Engine {
     }
 
     fn handle_pointer_and_wheel(&mut self, event: &WindowEvent, position: Vec2) -> Option<bool> {
-        let consumed = self.handle_ui_left_click(event, position)
+        let consumed = self.handle_panel_wheel(event, position)
+            || self.handle_ui_left_click(event, position)
             || self.handle_quick_panel_scroll(event, position)
             || self.handle_pan_over_frame(event, position)
             || self.handle_open_page_scroll(event);

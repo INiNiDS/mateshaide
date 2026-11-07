@@ -68,6 +68,7 @@ pub enum UiAction {
     ExportPdf,
     ToggleEraser,
     ToggleText,
+    PanelButton(String, String)
 }
 
 #[derive(Default)]
@@ -341,6 +342,8 @@ impl PluginManager {
             self.draw_toolbar(&mut frame, page, camera, screen);
 
             self.draw_quick_actions(&mut frame, page, camera, screen);
+
+            self.draw_panels(&mut frame, camera);
 
             self.draw_notice(&mut frame, camera, screen);
 
@@ -676,6 +679,10 @@ impl PluginManager {
 
     pub(crate) fn quick_scroll_max(&self, camera: &Camera) -> f32 {
         self.quick_layout(camera).max_scroll
+    }
+
+    pub(crate) fn panel_top(&self, camera: &Camera) -> f32 {
+        self.quick_layout(camera).viewport[3] + PANEL_GAP
     }
 
     pub(crate) fn quick_contains(&self, page: &PluginPage, camera: &Camera, p: glam::Vec2) -> bool {
