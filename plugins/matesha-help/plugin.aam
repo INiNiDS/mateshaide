@@ -1,0 +1,11 @@
+id = "org.matesha.help"
+name = "Help"
+version = "1.0.0"
+description = "Help viewer: how to use MateshaIDE and how to write plugins. Other plugins add pages by shipping assets/help/*.md. Toggle with F1 or the ? Help button."
+authors = ["Nikita Goncharov"]
+repository = "https://github.com/ininids/mateshaide"
+icon = "assets/icon.png"
+entry = "main.lua"
+api = "^1.0"
+permissions = ["help.read"]
+dependencies = []

@@ -329,7 +329,8 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
         "matesha-help",
         [
             "assets/help/01-overview.md",
-            "assets/help/03-formulas.md",
+            "assets/icon.png"
+            "assets/help/03-formulas.md.md",
             "assets/help/04-eraser.md",
             "assets/help/05-fonts.md",
             "assets/help/06-hotkeys.md",
