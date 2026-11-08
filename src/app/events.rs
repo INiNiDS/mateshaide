@@ -9,25 +9,33 @@ const WHEEL_X_EPSILON: f32 = 0.001;
 const WHEEL_PAN_SCALE: f32 = 32.0;
 
 impl App {
-    pub(super) fn handle_redraw_requested(window: &Window, engine: &mut Engine) {
-        let current = window.inner_size();
+    #[cfg(not(target_arch = "wasm32"))]
+    fn surface_size(window: &Window) -> winit::dpi::PhysicalSize<u32> {
+        window.inner_size()
+    }
 
-        #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
+    fn surface_size(window: &Window) -> winit::dpi::PhysicalSize<u32> {
+        let mut size = window.inner_size();
+
+        if let Some(win) = web_sys::window()
+            && let (Ok(w), Ok(h)) = (win.inner_width(), win.inner_height())
+            && let (Some(wv), Some(hv)) = (w.as_f64(), h.as_f64())
         {
-            if let Some(win) = web_sys::window() {
-                let dpr = win.device_pixel_ratio();
-                if let (Ok(w), Ok(h)) = (win.inner_width(), win.inner_height()) {
-                    if let (Some(wv), Some(hv)) = (w.as_f64(), h.as_f64()) {
-                        let rw = (wv * dpr).round() as u32;
-                        let rh = (hv * dpr).round() as u32;
-                        if rw > 0 && rh > 0 {
-                            current.width = rw;
-                            current.height = rh;
-                        }
-                    }
-                }
+            let dpr = win.device_pixel_ratio();
+            let rw = (wv * dpr).round() as u32;
+            let rh = (hv * dpr).round() as u32;
+            if rw > 0 && rh > 0 {
+                size.width = rw;
+                size.height = rh;
             }
         }
+
+        size
+    }
+
+    pub(super) fn handle_redraw_requested(window: &Window, engine: &mut Engine) {
+        let current = Self::surface_size(window);
 
         let es = engine.size();
         if current.width > 0

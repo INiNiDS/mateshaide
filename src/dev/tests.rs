@@ -38,7 +38,7 @@ fn explicit_spawn_size_updates_quad_and_sdf() {
     assert_eq!(canvas.instances[0].size, [240.0, 120.0]);
     assert_eq!(canvas.instances[0].a, [120.0, 60.0, 0.0, 0.0]);
     assert!(canvas.undo());
-    assert!(canvas.instances.is_empty());
+    assert_eq!(canvas.instances, Vec::new());
 }
 
 #[test]
@@ -254,7 +254,7 @@ fn spawn_drag_is_transient_then_remembers_size() {
     let end = screen(&canvas, Vec2::new(140.0, 20.0));
     tool.pointer_pressed(&mut canvas, &registry, start, false);
     tool.pointer_moved(&mut canvas, &registry, end, false);
-    assert!(canvas.instances.is_empty());
+    assert_eq!(canvas.instances, Vec::new());
     assert_eq!(tool.preview_instance(&canvas).unwrap().size, [240.0, 120.0]);
     tool.finish_interaction(&mut canvas);
     assert_eq!(tool.spawn_size, Vec2::new(240.0, 120.0));
@@ -282,7 +282,7 @@ fn cancelled_spawn_changes_neither_canvas_nor_palette() {
     tool.pointer_pressed(&mut canvas, &registry, cursor, false);
     tool.pointer_moved(&mut canvas, &registry, cursor + Vec2::splat(100.0), false);
     tool.escape(&mut canvas);
-    assert!(canvas.instances.is_empty());
+    assert_eq!(canvas.instances, Vec::new());
     assert_eq!(tool.preview_color(), color);
     assert!(!canvas.undo());
 }
@@ -346,7 +346,7 @@ fn delete_selection_is_undoable() {
     tool.pointer_pressed(&mut canvas, &registry, cursor, false);
     tool.finish_interaction(&mut canvas);
     tool.delete_selected(&mut canvas);
-    assert!(canvas.instances.is_empty());
+    assert_eq!(canvas.instances, Vec::new());
     assert_eq!(tool.selected(), None);
     assert!(canvas.undo());
     assert_eq!(canvas.instances[0], rect());

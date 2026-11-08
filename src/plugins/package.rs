@@ -2,6 +2,7 @@ use super::manifest::{Manifest, relative_name};
 use anyhow::{Context, Result, ensure};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Read;
 
 const MAX_PACKAGE_FILES: usize = 256;
@@ -351,7 +352,7 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
             "assets/help/15-api-help-pages.md",
         ]
     );
-    bundled!("auto-save", ["assets/icon.png", "assets/help/auto-save.md"]);
+    bundled!("auto-save", ["assets/icon.png", "assets/help/autosave.md"]);
 
     for stored in super::platform::browser_packages() {
         match Package::from_files(stored, "browser storage".into()) {
