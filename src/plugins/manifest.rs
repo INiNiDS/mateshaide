@@ -13,7 +13,7 @@ pub const PERMISSIONS: &[&str] = &[
     "clipboard.write",
     "files.pick",
     "help.read",
-    "document.autosave"
+    "document.autosave",
 ];
 
 const MAX_MANIFEST_BYTES: usize = 65_536;

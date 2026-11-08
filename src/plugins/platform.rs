@@ -823,4 +823,3 @@ fn setup_browser() {
 "#,
     );
 }
-

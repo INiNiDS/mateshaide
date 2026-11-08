@@ -103,7 +103,7 @@ impl ApplicationHandler for App {
         let (next, redraw) = engine.plugin_tick();
         event_loop.set_control_flow(next.map_or(
             winit::event_loop::ControlFlow::Wait,
-            winit::event_loop::ControlFlow::WaitUntil
+            winit::event_loop::ControlFlow::WaitUntil,
         ));
         if redraw && let Some(window) = self.window.borrow().as_ref() {
             window.request_redraw();
@@ -130,11 +130,7 @@ impl App {
         event_loop.exit();
     }
 
-    fn handle_system_event(
-        engine: &mut Engine,
-        window: &Arc<Window>,
-        event: &WindowEvent,
-    ) -> bool {
+    fn handle_system_event(engine: &mut Engine, window: &Arc<Window>, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::RedrawRequested => {
                 Self::handle_redraw_requested(window, engine);

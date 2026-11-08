@@ -179,7 +179,9 @@ impl Runtime {
         key.push('\n');
         key.push_str(&crate::graphics::fonts::generation().to_string());
 
-        if let Some((cached_key, out)) = self.pure_cache.get(slot) && *cached_key == key {
+        if let Some((cached_key, out)) = self.pure_cache.get(slot)
+            && *cached_key == key
+        {
             return Ok(out.clone());
         }
 
@@ -188,7 +190,6 @@ impl Runtime {
         self.pure_cache.insert(slot.to_owned(), (key, out.clone()));
         Ok(out)
     }
-
 
     #[cfg(test)]
     pub fn has_cached(&self, slot: &str) -> bool {

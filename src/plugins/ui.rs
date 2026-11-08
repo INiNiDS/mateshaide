@@ -450,8 +450,8 @@ impl PluginManager {
             (("PNG", UiAction::ExportPng), false),
             (("PDF", UiAction::ExportPdf), false),
         ]
-            .into_iter()
-            .zip(layout.system_buttons)
+        .into_iter()
+        .zip(layout.system_buttons)
         {
             frame.button(camera, bounds, label, action, selected);
         }
@@ -748,7 +748,10 @@ impl PluginManager {
                 bounds[0] + PANEL_PAD,
                 bounds[1] + 16.0,
                 14.0,
-                clipped(&title, ((bounds[2] - bounds[0] - 2.0 * PANEL_PAD) / 7.0).max(1.0) as usize),
+                clipped(
+                    &title,
+                    ((bounds[2] - bounds[0] - 2.0 * PANEL_PAD) / 7.0).max(1.0) as usize,
+                ),
                 body.theme.text,
             );
 

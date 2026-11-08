@@ -160,9 +160,10 @@ impl Eraser {
 
         let mut out = EraseOutcome::default();
         if !self.moved
-            && let Some(hit) = self.press_hit {
-                out = self.erase_click(canvas, hit);
-            }
+            && let Some(hit) = self.press_hit
+        {
+            out = self.erase_click(canvas, hit);
+        }
 
         self.dragging = false;
         self.press_hit = None;

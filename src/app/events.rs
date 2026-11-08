@@ -215,12 +215,12 @@ impl App {
         }
         match state {
             ElementState::Pressed
-            if !engine.draw.enabled
-                && engine.register_canvas_click(input.cursor_position()) =>
-                {
-                    engine.create_text_at(input.cursor_position());
-                    window.request_redraw();
-                }
+                if !engine.draw.enabled
+                    && engine.register_canvas_click(input.cursor_position()) =>
+            {
+                engine.create_text_at(input.cursor_position());
+                window.request_redraw();
+            }
             ElementState::Pressed => {
                 engine.begin_draw(input.cursor_position());
                 window.request_redraw();

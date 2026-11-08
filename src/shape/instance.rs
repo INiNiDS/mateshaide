@@ -103,7 +103,7 @@ impl ShapeInstance {
             Vec2::splat(radius * 2.0),
             color,
         )
-            .with_params([radius, 0.0, 0.0, 0.0], [0.0; 4])
+        .with_params([radius, 0.0, 0.0, 0.0], [0.0; 4])
     }
 
     pub fn line(start: Vec2, end: Vec2, radius: f32, color: impl Into<Color>) -> Self {

@@ -55,18 +55,22 @@ impl Engine {
     }
 
     pub fn eraser_pressed(&mut self, screen: Vec2) -> bool {
-        let out = self.eraser.press(&mut self.canvas, &self.shapes, screen, &|n| {
-            self.plugins.accepts_ink(n)
-        });
+        let out = self
+            .eraser
+            .press(&mut self.canvas, &self.shapes, screen, &|n| {
+                self.plugins.accepts_ink(n)
+            });
         let redraw = self.apply_erase(out);
         self.flush_ink();
         redraw
     }
 
     pub fn eraser_moved(&mut self, screen: Vec2) -> bool {
-        let out = self.eraser.moved(&mut self.canvas, &self.shapes, screen, &|n| {
-            self.plugins.accepts_ink(n)
-        });
+        let out = self
+            .eraser
+            .moved(&mut self.canvas, &self.shapes, screen, &|n| {
+                self.plugins.accepts_ink(n)
+            });
         let redraw = self.apply_erase(out);
         self.flush_ink();
         redraw
@@ -88,7 +92,8 @@ impl Engine {
                 "click": erase.click,
                 "tol": erase.tolerance,
             });
-            self.plugins.dispatch(&erase.plugin, &event, &mut self.canvas);
+            self.plugins
+                .dispatch(&erase.plugin, &event, &mut self.canvas);
         }
 
         for ink in self.canvas.take_finished_ink() {
