@@ -244,6 +244,7 @@ impl App {
             ElementState::Pressed => {
                 #[cfg(debug_assertions)]
                 engine.finish_test_interaction();
+                tracing::info!("ERASER released by pan button");
                 engine.eraser_released();
                 if !engine.canvas.is_panning() {
                     engine.canvas.start_pan();

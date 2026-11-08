@@ -17,6 +17,7 @@ pub struct InkErase {
     pub tolerance: f32,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default)]
 pub struct Eraser {
     pub enabled: bool,
@@ -81,6 +82,7 @@ impl Eraser {
             return EraseOutcome::default();
         }
 
+        tracing::info!("ERASER press screen={screen:?}");
         let mut out = self.release(canvas);
         let world = canvas.camera.screen_to_world(screen);
 
@@ -93,7 +95,7 @@ impl Eraser {
         self.press_world = world;
         self.press_hit = hit::hit_at(canvas, world, registry, Self::tolerance(canvas));
         self.press_ink = match self.press_hit {
-            Some(Hit::Node(i)) => canvas.plugin_nodes.get(i).is_some_and(|n| accepts(n)),
+            Some(Hit::Node(i)) => canvas.plugin_nodes.get(i).is_some_and(accepts),
             _ => false,
         };
 
@@ -116,6 +118,11 @@ impl Eraser {
         let mut out = EraseOutcome::default();
 
         if self.dragging {
+            tracing::info!(
+                "ERASER drag moved={} dist={}",
+                self.moved,
+                (screen - self.press_screen).length()
+            );
             let mut ink_at: Option<(Vec2, usize)> = None;
 
             if !self.moved && (screen - self.press_screen).length() > CLICK_SLOP_PX {
@@ -180,6 +187,15 @@ impl Eraser {
         ink_at: &mut Option<(Vec2, usize)>,
     ) -> EraseOutcome {
         let tol = Self::tolerance(canvas);
+        let under = canvas
+            .instances
+            .iter()
+            .rposition(|s| hit::shape_hit(s, world, registry, tol))
+            .map(|i| canvas.instances[i].stroke_id());
+        tracing::info!(
+            "ERASER sweep world={world:?} stroke={:?} shape_stroke_id={under:?}",
+            stroke_at(canvas, registry, world, tol)
+        );
 
         if let Some(group) = stroke_at(canvas, registry, world, tol) {
             let ok = canvas.remove_stroke(group);
@@ -202,7 +218,10 @@ impl Eraser {
 
         match hit {
             Hit::Shape(i) => {
-                let group = canvas.instances.get(i).map_or(0, |s| s.stroke_id());
+                let group = canvas
+                    .instances
+                    .get(i)
+                    .map_or(0, super::super::shape::instance::ShapeInstance::stroke_id);
                 let ok = if group != 0 {
                     canvas.remove_stroke(group)
                 } else {
@@ -269,7 +288,7 @@ fn stroke_at(canvas: &Canvas, registry: &ShapeRegistry, world: Vec2, tol: f32) -
         .iter()
         .rev()
         .find(|s| s.stroke_id() != 0 && hit::shape_hit(s, world, registry, tol))
-        .map(|s| s.stroke_id())
+        .map(super::super::shape::instance::ShapeInstance::stroke_id)
 }
 
 fn ink_node_at(canvas: &Canvas, world: Vec2, accepts: Accepts<'_>) -> Option<usize> {
