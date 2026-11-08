@@ -431,4 +431,58 @@ function Plot.zoom(view, k, cx, cy)
     }
 end
 
+function Plot.to_math(view, L, X, Y)
+    local sx = (L.r - L.l) / (view[2] - view[1])
+    local sy = (L.t - L.b) / (view[4] - view[3])
+    return view[1] + (X - L.l) / sx, view[3] + (Y - L.b) / sy
+end
+
+local function seg_dist(px, py, ax, ay, bx, by)
+    local dx, dy = bx - ax, by - ay
+    local len2 = dx * dx + dy * dy
+    local t = 0
+    if len2 > 0 then
+        t = ((px - ax) * dx + (py - ay) * dy) / len2
+    end
+    t = max(0, min(1, t))
+    local cx, cy = ax + t * dx - px, ay + t * dy - py
+    return math.sqrt(cx * cx + cy * cy)
+end
+
+function Plot.ink(out, strokes, view, L)
+    local world = make_world(view, L)
+    for _, s in ipairs(strokes or {}) do
+        local p, px, py = s.p, nil, nil
+        for i = 1, #p - 1, 2 do
+            local X, Y = world(p[i], p[i + 1])
+            if X and px then
+                local x1, y1, x2, y2 = Plot.clip(px, py, X, Y, L.l, L.r, L.b, L.t)
+                if x1 then
+                    line(out, x1, y1, x2, y2, s.w, s.c)
+                end
+            end
+            px, py = X, Y
+        end
+    end
+end
+
+function Plot.ink_hit(strokes, view, L, X, Y, tol)
+    local world = make_world(view, L)
+    for k = #strokes, 1, -1 do
+        local s = strokes[k]
+        local p, px, py, best = s.p, nil, nil, math.huge
+        for i = 1, #p - 1, 2 do
+            local bx, by = world(p[i], p[i + 1])
+            if bx and px then
+                best = math.min(best, seg_dist(X, Y, px, py, bx, by))
+            end
+            px, py = bx, by
+        end
+        if best <= tol + (s.w or 0) * 0.5 then
+            return k
+        end
+    end
+    return nil
+end
+
 return Plot

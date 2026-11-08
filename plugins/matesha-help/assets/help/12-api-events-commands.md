@@ -29,3 +29,8 @@ corner and the object extends down to y - height.
 
 All commands of one event are applied together. If anything fails, nothing is changed and the error is shown in the
 notice line. All changes of one pointer drag form one undo step.
+
+## Ink events
+
+- `ink.stroke`: `node` (object id), `points` (flat list of x, y in world coordinates), `width`, `color` (RGBA). Sent when a stroke drawn over an ink object ends.
+- `ink.erase`: `node`, `x`, `y` (world coordinates), `tol` (radius in world units), `click` (true when the eraser was clicked, false when dragged). Sent while the eraser is over an ink object.

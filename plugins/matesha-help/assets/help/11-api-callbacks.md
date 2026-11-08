@@ -53,3 +53,7 @@ Optional cleanup.
 
 250 ms per call, 128 commands per callback, 64 commands per event chain, node data up to 256 KB, 5000 objects per
 document.
+
+## ink
+
+Plugin contributions can list object types in `ink`. Each type must also be in `object_types`. Freehand strokes that start inside such an object are not drawn on the canvas. The plugin receives them as an `ink.stroke` event and stores them in its own data. The eraser sends an `ink.erase` event instead of deleting the object.

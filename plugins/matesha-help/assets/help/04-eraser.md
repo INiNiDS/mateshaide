@@ -1,9 +1,12 @@
 # Eraser
 
-The eraser removes whole objects: strokes and shapes, text blocks and plain canvas text.
+The eraser removes things in two ways, depending on how you use the mouse.
 
-- Press E or the Eraser button. Ctrl + 8 toggles it, Escape turns it off.
-- Click an object to remove it, or hold the button and drag across several objects.
-- The object under the cursor is highlighted before you click.
-- One drag is one step in history: Ctrl + Z brings back everything erased by that drag.
-- To remove only part of a text, edit the block with the Text tool instead.
+- Click an object to delete it: a stroke, a text block, or a graph.
+- Press and drag to erase drawings only. Every stroke you touch is removed as a whole. Text blocks and graphs are not affected by a drag.
+
+The object under the cursor is highlighted before you click. One click or one drag is one undo step, so Ctrl + Z brings it back.
+
+Inside a graph, a click on a drawing removes that drawing, and a click on an empty part of the graph deletes the graph. A drag over a drawing inside a graph erases it.
+
+Turn the eraser on with E or the Eraser button in the toolbar. Press Escape to turn it off.

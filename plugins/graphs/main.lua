@@ -523,11 +523,72 @@ local function key_view(s, ctx, node, e)
     return array()
 end
 
+local INK_MAX_STROKES = 300
+local INK_MAX_POINTS = 1500
+local INK_TOL = 0.6
+
+local function r3(v)
+    return floor(v * 1000 + 0.5) / 1000
+end
+
+local function add_ink(ctx, e)
+    local node = find_node(ctx.nodes, e.node)
+    if not node or type(e.points) ~= "table" or #e.points < 4 then
+        return {}
+    end
+    local ink = node.data.ink or {}
+    if #ink >= INK_MAX_STROKES then
+        return {}
+    end
+
+    local L, view = Plot.layout(node), node.data.view
+    local run = Plot.simplify(e.points, INK_TOL)
+    if #run > INK_MAX_POINTS * 2 then
+        return {}
+    end
+
+    local p = {}
+    for i = 1, #run - 1, 2 do
+        local x, y = Plot.to_math(view, L, run[i], run[i + 1])
+        if not (Plot.finite(x) and Plot.finite(y)) then
+            return {}
+        end
+        p[#p + 1] = r3(x)
+        p[#p + 1] = r3(y)
+    end
+    if #p < 4 then
+        return {}
+    end
+
+    ink[#ink + 1] = { w = e.width or 4, c = copy4(e.color or { 0.1, 0.1, 0.1, 1 }), p = p }
+    node.data.ink = ink
+    return { update(node) }
+end
+
+local function erase_ink(ctx, e)
+    local node = find_node(ctx.nodes, e.node)
+    if not node then
+        return {}
+    end
+    local ink = node.data.ink or {}
+    local k = Plot.ink_hit(ink, node.data.view, Plot.layout(node), e.x, e.y, e.tol or 6)
+    if k then
+        table.remove(ink, k)
+        node.data.ink = ink
+        return { update(node) }
+    end
+    if e.click then
+        return { { kind = "node.delete", id = node.id } }
+    end
+    return {}
+end
+
 function P.activate(s)
     s.current, s.row, s.caret, s.fresh, s.drag = "", 0, 0, false, ""
     return {
         tools = { { id = "graph", label = "Graph", text_input = true, wheel = true } },
         object_types = { "graph" },
+        ink = { "graph" },
         services = { "plot.v1" },
         commands = {
             { id = "add_fx", label = "+ y(x)" },
@@ -598,6 +659,12 @@ local GLOBAL_EVENTS = {
 }
 
 function P.handle(s, e, ctx)
+    if e.name == "ink.stroke" then
+        return add_ink(ctx, e)
+    end
+    if e.name == "ink.erase" then
+        return erase_ink(ctx, e)
+    end
     local global = GLOBAL_EVENTS[e.name]
     if global then
         return global(s, ctx, e)
@@ -629,6 +696,7 @@ function P.render(s, node, ctx)
             Plot.curve(out, fn, view, L, zoom, node.data.rows[i].color, cap)
         end
     end
+    Plot.ink(out, node.data.ink, view, L)
     for i, row in ipairs(node.data.rows) do
         local top = L.rows_top - (i - 1) * Plot.ROW
         local bad = fns[i] and fns[i].error

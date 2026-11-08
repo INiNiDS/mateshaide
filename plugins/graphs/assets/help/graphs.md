@@ -54,3 +54,11 @@ Function graphs: y = f(x), x = g(y), and parametric curves (x(t), y(t)). Tool: G
 ### Data
 
 A graph is a node of type graph with schema_version 1 and data { rows, view, auto, grid }. Each row is { text, color }, where text is the formula as typed and color is RGBA with values from 0 to 1. view is [x_min, x_max, y_min, y_max]. auto is true when the view follows the curves. grid is true when grid lines are shown. Default size is 480 × 340. Formulas are stored as typed, so graphs stay editable.
+
+## Drawing inside a graph
+
+Turn on Draw and start a stroke inside the graph frame. The stroke becomes part of the graph.
+
+- The stroke is stored in graph coordinates. It moves with the graph, follows zoom and pan of the view, and is clipped to the plot area.
+- When the view moves away from the stroke, the stroke is hidden. It comes back when the view returns.
+- Use the eraser to remove a drawing: click it to delete it, or drag over it.
