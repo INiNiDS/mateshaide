@@ -408,7 +408,6 @@ impl UiFrame {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn button_styled(
         &mut self,
         camera: &crate::Camera,

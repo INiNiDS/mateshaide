@@ -10,8 +10,7 @@ const WHEEL_PAN_SCALE: f32 = 32.0;
 
 impl App {
     pub(super) fn handle_redraw_requested(window: &Window, engine: &mut Engine) {
-        #[allow(unused_mut)]
-        let mut current = window.inner_size();
+        let current = window.inner_size();
 
         #[cfg(target_arch = "wasm32")]
         {

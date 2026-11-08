@@ -17,7 +17,6 @@ pub struct InkErase {
     pub tolerance: f32,
 }
 
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default)]
 pub struct Eraser {
     pub enabled: bool,
@@ -160,11 +159,10 @@ impl Eraser {
         }
 
         let mut out = EraseOutcome::default();
-        if !self.moved {
-            if let Some(hit) = self.press_hit {
+        if !self.moved
+            && let Some(hit) = self.press_hit {
                 out = self.erase_click(canvas, hit);
             }
-        }
 
         self.dragging = false;
         self.press_hit = None;

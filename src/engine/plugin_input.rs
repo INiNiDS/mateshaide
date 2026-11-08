@@ -71,7 +71,7 @@ impl Engine {
         self.plugin_page.eraser_enabled = self.eraser.enabled;
         self.plugin_page.text_enabled = self.text_tool_selected();
         if !self.plugin_page.open && !self.is_capturing() {
-            self.plugins.refresh_panels(&self.canvas.camera)
+            self.plugins.refresh_panels(&self.canvas.camera);
         }
         if self.is_capturing() {
             UiFrame::with_theme(self.plugins.settings.appearance.theme())
