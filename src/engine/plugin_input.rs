@@ -636,6 +636,12 @@ impl Engine {
     }
 
     fn handle_focus_lost(&mut self) -> bool {
+        tracing::info!("plugin focus lost, wants_text_input={}", self.plugins.wants_text_input());
+        // On web the hidden textarea takes focus from the canvas; that is not a real blur.
+        if plugins::platform::browser_editor_has_focus() {
+            return false;
+        }
+
         self.plugins.blur(&mut self.canvas);
         self.plugin_pointer_captured = false;
         self.plugin_ime_composing = false;

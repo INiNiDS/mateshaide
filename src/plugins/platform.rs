@@ -743,6 +743,22 @@ fn write_package_files(destination: &std::path::Path, package: &Package) -> Resu
     Ok(())
 }
 
+#[must_use]
+pub fn browser_editor_has_focus() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::eval("!!(window.__mateshaEditorHasFocus && window.__mateshaEditorHasFocus())")
+            .ok()
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 fn write_package_to_storage(plugin_id: &str, package: &Package) -> Result<()> {
     let storage = browser_storage()?;
@@ -789,6 +805,7 @@ fn setup_browser() {
         r#"
 (() => {
  if (window.__mateshaPluginQueue) return;
+ window.__mateshaEditorHasFocus=()=>focused;
  const queue = window.__mateshaPluginQueue = [];
  const wake=()=>window.__mateshaWake && window.__mateshaWake();
  const emit = event => { if(queue.length < 256) queue.push({kind:'event', event}); wake(); };
