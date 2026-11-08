@@ -8,6 +8,8 @@ pub(super) fn register(input: &mut InputManager) {
     register_history_actions(input);
     register_camera_actions(input);
     register_export_actions(input);
+    register_eraser_actions(input);
+    register_text_actions(input);
 }
 
 fn register_draw_actions(input: &mut InputManager) {
@@ -17,6 +19,10 @@ fn register_draw_actions(input: &mut InputManager) {
         #[cfg(debug_assertions)]
         if !engine.draw.enabled {
             engine.disable_test_tools();
+        }
+
+        if !engine.draw.enabled {
+            engine.set_eraser(false);
         }
         engine.draw.toggle();
     });
@@ -87,4 +93,30 @@ fn register_export_actions(input: &mut InputManager) {
 
     input.bind(Shortcut::key(KeyCode::KeyE).ctrl(), "export_png");
     input.bind(Shortcut::key(KeyCode::KeyP).ctrl(), "export_pdf");
+}
+
+fn register_eraser_actions(input: &mut InputManager) {
+    input.register_action("eraser", |engine: &mut Engine| {
+        engine.set_eraser(true);
+    });
+
+    input.register_action("toggle_eraser", |engine: &mut Engine| {
+        engine.toggle_eraser();
+    });
+
+    input.register_action("escape", |engine: &mut Engine| {
+        engine.escape();
+    });
+
+    input.bind(Shortcut::key(KeyCode::KeyE), "eraser");
+    input.bind(Shortcut::key(KeyCode::Digit8).ctrl(), "toggle_eraser");
+    input.bind(Shortcut::key(KeyCode::Escape), "escape");
+}
+
+fn register_text_actions(input: &mut InputManager) {
+    input.register_action("text_tool", |engine: &mut Engine| {
+        engine.select_text_tool();
+    });
+
+    input.bind(Shortcut::key(KeyCode::KeyT), "text_tool");
 }

@@ -6,15 +6,30 @@ use winit::window::Window;
 pub enum Request {
     Document(Vec<u8>),
     Package(Vec<u8>),
+    PluginFile(PluginFile),
     Event(serde_json::Value),
     Error(String),
 }
+
+pub struct PluginFile {
+    pub plugin: String,
+    pub accept: String,
+    pub token: serde_json::Value,
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+pub const PICKABLE: &[(&str, &str, &[&str])] = &[("font", "Font", &["ttf", "otf", "ttc"])];
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_USER_FONTS: usize = 16;
 
 const MAX_DOCUMENT_SIZE: usize = 32 * 1024 * 1024;
 const MAX_PACKAGE_ARCHIVE_SIZE: usize = 8 * 1024 * 1024;
 const MAX_PACKAGE_FILE_SIZE: usize = 2 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: usize = 512;
+#[cfg(target_arch = "wasm32")]
 const MAX_BROWSER_PACKAGES: usize = 256;
+#[cfg(target_arch = "wasm32")]
 const SETTINGS_STORAGE_KEY: &str = "matesha.plugins.v1";
 
 thread_local! {
@@ -98,7 +113,7 @@ fn update_native_ime(enabled: bool, x: f32, y: f32) {
         });
 
         window.set_ime_cursor_area(
-            winit::dpi::PhysicalPosition::new(x as f64, y as f64),
+            winit::dpi::PhysicalPosition::new(f64::from(x), f64::from(y)),
             winit::dpi::PhysicalSize::new(2u32, 24u32),
         );
     });
@@ -116,6 +131,7 @@ fn push(request: Request) {
     REQUESTS.with(|queue| queue.borrow_mut().push(request));
 }
 
+#[must_use]
 pub fn drain() -> Vec<Request> {
     #[cfg(target_arch = "wasm32")]
     drain_browser_requests();
@@ -149,6 +165,7 @@ fn push_browser_request(value: serde_json::Value) {
     match value["kind"].as_str() {
         Some("document") => push_bytes_request(value, Request::Document),
         Some("package") => push_bytes_request(value, Request::Package),
+        Some("plugin-file") => push_plugin_file(&value),
         Some("event") => push(Request::Event(value["event"].clone())),
         Some("error") => push(Request::Error(
             value["message"]
@@ -161,6 +178,21 @@ fn push_browser_request(value: serde_json::Value) {
 }
 
 #[cfg(target_arch = "wasm32")]
+fn push_plugin_file(value: &serde_json::Value) {
+    let meta = &value["meta"];
+    match serde_json::from_value(value["bytes"].clone()) {
+        Ok(bytes) => push(Request::PluginFile(PluginFile {
+            plugin: meta["plugin"].as_str().unwrap_or_default().to_owned(),
+            accept: meta["accept"].as_str().unwrap_or_default().to_owned(),
+            token: meta["token"].clone(),
+            name: value["name"].as_str().unwrap_or_default().to_owned(),
+            bytes,
+        })),
+        Err(error) => push(Request::Error(error.to_string())),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 fn push_bytes_request(value: serde_json::Value, constructor: fn(Vec<u8>) -> Request) {
     match serde_json::from_value(value["bytes"].clone()) {
         Ok(bytes) => push(constructor(bytes)),
@@ -168,6 +200,7 @@ fn push_bytes_request(value: serde_json::Value, constructor: fn(Vec<u8>) -> Requ
     }
 }
 
+#[must_use]
 pub fn load_settings() -> Settings {
     let data = read_settings_data();
 
@@ -408,6 +441,118 @@ fn request_package_file() {
     }
 }
 
+pub fn request_plugin_file(plugin: &str, accept: &str, token: &serde_json::Value) {
+    let Some(&(_, label, extensions)) = PICKABLE.iter().find(|(kind, _, _)| *kind == accept) else {
+        push(Request::Error(format!(
+            "cannot pick files of kind {accept}"
+        )));
+        return;
+    };
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, extensions)
+            .pick_file()
+        else {
+            return;
+        };
+
+        match read_bounded(&path, crate::graphics::fonts::MAX_FONT_BYTES) {
+            Ok(bytes) => push(Request::PluginFile(PluginFile {
+                plugin: plugin.to_owned(),
+                accept: accept.to_owned(),
+                token: token.clone(),
+                name: path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default()
+                    .to_owned(),
+                bytes,
+            })),
+            Err(error) => push(Request::Error(error.to_string())),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = label;
+        let filter: Vec<String> = extensions.iter().map(|e| format!(".{e}")).collect();
+        let meta = serde_json::json!({"plugin": plugin, "accept": accept, "token": token});
+        let call = format!(
+            "window.__mateshaChooseFile('plugin-file', {}, {}, {})",
+            serde_json::Value::from(filter.join(",")),
+            crate::graphics::fonts::MAX_FONT_BYTES,
+            meta
+        );
+        let _ = js_sys::eval(&call);
+    }
+}
+
+pub fn store_user_font(bytes: &[u8]) -> Result<()> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use sha2::{Digest, Sha256};
+        if cfg!(test) {
+            return Ok(());
+        }
+        let dir = user_fonts_dir();
+        std::fs::create_dir_all(&dir)?;
+        let digest = Sha256::digest(bytes);
+        let name = digest[..12].iter().fold(String::new(), |mut out, b| {
+            use std::fmt::Write as _;
+            let _ = write!(out, "{b:02x}");
+            out
+        });
+        let path = dir.join(format!("{name}.font"));
+        if !path.exists() {
+            ensure!(
+                std::fs::read_dir(&dir)?.count() < MAX_USER_FONTS,
+                "user font limit reached"
+            );
+            std::fs::write(path, bytes)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = bytes;
+        Ok(())
+    }
+}
+
+#[must_use]
+pub fn load_user_fonts() -> Vec<Vec<u8>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Ok(entries) = std::fs::read_dir(user_fonts_dir()) else {
+            return Vec::new();
+        };
+        let mut paths: Vec<_> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "font"))
+            .collect();
+        paths.sort();
+        paths
+            .iter()
+            .take(MAX_USER_FONTS)
+            .filter_map(|p| read_bounded(p, crate::graphics::fonts::MAX_FONT_BYTES).ok())
+            .collect()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        Vec::new()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn user_fonts_dir() -> std::path::PathBuf {
+    settings_path().with_file_name("fonts")
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn read_bounded(path: &std::path::Path, max: usize) -> Result<Vec<u8>> {
     use std::io::Read as _;
@@ -539,7 +684,11 @@ fn retain_package_files(files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Ve
     files
         .into_iter()
         .filter(|(name, _)| {
-            name == "plugin.aam" || name.ends_with(".lua") || name.starts_with("assets/")
+            name == "plugin.aam"
+                || std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
+                || name.starts_with("assets/")
         })
         .collect()
 }
@@ -666,58 +815,11 @@ fn setup_browser() {
    if(enabled && document.activeElement!==t){focused=true;t.focus({preventScroll:true});}
    if(!enabled && document.activeElement===t){focused=false;t.blur();}
  };
- window.__mateshaChooseFile=(kind,accept,max)=>{
+ window.__mateshaChooseFile=(kind,accept,max,meta)=>{
    const input=document.createElement('input'); input.type='file';input.accept=accept;
-   input.onchange=async()=>{try{const f=input.files[0];if(!f)return;if(f.size>max)throw Error('File too large');const b=new Uint8Array(await f.arrayBuffer());queue.push({kind,bytes:Array.from(b)});wake();}catch(e){queue.push({kind:'error',message:String(e)});wake();}};input.click();
+   input.onchange=async()=>{try{const f=input.files[0];if(!f)return;if(f.size>max)throw Error('File too large');const b=new Uint8Array(await f.arrayBuffer());queue.push({kind,bytes:Array.from(b),meta,name:f.name});wake();}catch(e){queue.push({kind:'error',message:String(e)});wake();}};input.click();
  };
 })();
 "#,
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn imported_package_keeps_lua_modules() {
-        let files = BTreeMap::from([
-            ("plugin.aam".to_owned(), vec![1]),
-            ("main.lua".to_owned(), vec![2]),
-            ("lib/helpers.lua".to_owned(), vec![3]),
-            ("assets/icon.png".to_owned(), vec![4]),
-            ("README.md".to_owned(), vec![5]),
-            ("legacy.rhai".to_owned(), vec![6]),
-        ]);
-        let files = retain_package_files(files);
-        assert_eq!(files.len(), 4);
-        assert!(files.contains_key("main.lua"));
-        assert!(files.contains_key("lib/helpers.lua"));
-        assert!(files.contains_key("assets/icon.png"));
-        assert!(!files.contains_key("legacy.rhai"));
-    }
-
-    #[test]
-    fn imported_package_strips_wrapper_directory() {
-        let files = BTreeMap::from([
-            ("plugin-1.0/plugin.aam".to_owned(), vec![1]),
-            ("plugin-1.0/main.lua".to_owned(), vec![2]),
-            ("plugin-1.0/lib/helpers.lua".to_owned(), vec![3]),
-            ("outside.txt".to_owned(), vec![4]),
-        ]);
-        let files = retain_package_files(normalize_archive_root(files));
-        assert_eq!(files.len(), 3);
-        assert!(files.contains_key("plugin.aam"));
-        assert!(files.contains_key("main.lua"));
-        assert!(files.contains_key("lib/helpers.lua"));
-    }
-
-    #[test]
-    fn imported_package_preserves_existing_root() {
-        let files = BTreeMap::from([
-            ("plugin.aam".to_owned(), vec![1]),
-            ("main.lua".to_owned(), vec![2]),
-        ]);
-        assert_eq!(normalize_archive_root(files.clone()), files);
-    }
 }

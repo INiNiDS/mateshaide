@@ -1,5 +1,5 @@
 use crate::canvas::Canvas;
-use crate::canvas::DrawTool;
+use crate::canvas::{DrawTool, Eraser};
 #[cfg(debug_assertions)]
 use crate::dev::TestSpawner;
 use crate::export::bounds::{Rect, content_bounds, frame_camera, item_rects};
@@ -8,6 +8,7 @@ use crate::export::png::{CaptureState, CapturedPng};
 use crate::graphics::capture_overlay::{
     self, ButtonAction, ButtonRect, CaptureOverlayParams, CardAnim, CardLayout, REST_ANGLE,
 };
+use crate::graphics::renderer::FrameInput;
 use crate::graphics::{PendingReadback, Renderer, RendererError};
 use crate::shape::{ShapeError, ShapeRegistry};
 use crate::{CanvasText, Color, export};
@@ -27,6 +28,10 @@ const DEVELOP_SECS: f32 = 2.4;
 const BUTTONS_DELAY: f32 = 0.7;
 const BUTTONS_FADE: f32 = 0.25;
 
+const BUTTON_CHAR_WIDTH_RATIO: f32 = 0.32;
+const BUTTON_BASELINE_SHIFT: f32 = 0.55;
+const BUTTON_MIN_OPACITY: f32 = 0.01;
+
 struct PdfJob {
     tiles: VecDeque<Rect>,
     builder: PdfBuilder,
@@ -40,11 +45,13 @@ pub struct Engine {
     #[cfg(debug_assertions)]
     pub test_spawner: TestSpawner,
     pub draw: DrawTool,
+    pub eraser: Eraser,
     pub(crate) plugins: crate::plugins::PluginManager,
     pub(crate) plugin_page: crate::plugins::PluginPage,
     pub(crate) plugin_pointer_captured: bool,
     pub(crate) plugin_ime_composing: bool,
     pub capture_cursor: Vec2,
+    pub(crate) last_click: Option<(Instant, Vec2)>,
     renderer: Renderer,
     last_frame_time: Instant,
     capture: CaptureState,
@@ -75,6 +82,7 @@ impl Engine {
             shapes,
             renderer,
             draw: DrawTool::default(),
+            eraser: Eraser::default(),
             plugins,
             plugin_page: crate::plugins::PluginPage::default(),
             plugin_pointer_captured: false,
@@ -86,6 +94,7 @@ impl Engine {
             capture: CaptureState::default(),
             pending_png: None,
             pdf_job: None,
+            last_click: None,
         })
     }
 
@@ -105,10 +114,10 @@ impl Engine {
 
     pub fn redraw(&mut self) {
         #[cfg(debug_assertions)]
-        let swatch = if !self.is_capturing() {
-            self.test_spawner.preview_color()
-        } else {
+        let swatch = if self.is_capturing() {
             None
+        } else {
+            self.test_spawner.preview_color()
         };
 
         let (sw, sh) = {
@@ -123,22 +132,19 @@ impl Engine {
             crate::dev::overlay::build_instances(&self.canvas, &self.shapes, &self.test_spawner)
         };
 
-        let mut overlay_texts = match self.capture_layout(sw, sh) {
-            Some(l) => {
-                let b = capture_overlay::compute_button_rects(&l, sw, sh);
-                self.build_button_texts(&b, self.button_opacity())
-            }
-            None => {
-                #[cfg(debug_assertions)]
-                let texts = if !self.is_capturing() {
-                    crate::dev::overlay::build_texts(&self.canvas, &self.test_spawner)
-                } else {
-                    Vec::new()
-                };
-                #[cfg(not(debug_assertions))]
-                let texts = Vec::new();
-                texts
-            }
+        let mut overlay_texts = if let Some(l) = self.capture_layout(sw, sh) {
+            let b = capture_overlay::compute_button_rects(&l, sw, sh);
+            self.build_button_texts(&b, self.button_opacity())
+        } else {
+            #[cfg(debug_assertions)]
+            let texts = if self.is_capturing() {
+                Vec::new()
+            } else {
+                crate::dev::overlay::build_texts(&self.canvas, &self.test_spawner)
+            };
+            #[cfg(not(debug_assertions))]
+            let texts = Vec::new();
+            texts
         };
         if !self.is_capturing() {
             let theme = self.plugins.settings.appearance.theme();
@@ -151,19 +157,21 @@ impl Engine {
         let scene = self.plugin_scene(true);
         let capture_params = Self::capture_params(&self.capture, sw, sh);
 
-        self.renderer.redraw(
-            &self.canvas.camera,
-            &scene.shapes,
-            &scene.texts,
-            &self.shapes,
+        self.renderer.redraw(FrameInput {
+            camera: &self.canvas.camera,
+            instances: &scene.shapes,
+            texts: &scene.texts,
+            shapes: &self.shapes,
+            capture: capture_params,
+            overlay_texts: &overlay_texts,
+            plugin_ui: &plugin_ui,
+
             #[cfg(debug_assertions)]
             swatch,
-            capture_params,
-            &overlay_texts,
+
             #[cfg(debug_assertions)]
-            &dev_overlay,
-            &plugin_ui,
-        );
+            dev_overlay: &dev_overlay,
+        });
     }
 
     pub fn update(&mut self) -> bool {
@@ -318,15 +326,14 @@ impl Engine {
                 (now - *started).as_secs_f32() >= CONVERGE_SECS
             }
         };
-        if transition {
-            if let CaptureState::Converge { image, .. } =
+        if transition
+            && let CaptureState::Converge { image, .. } =
                 std::mem::replace(&mut self.capture, CaptureState::Idle)
-            {
-                self.capture = CaptureState::Preview {
-                    image,
-                    shown_at: now,
-                };
-            }
+        {
+            self.capture = CaptureState::Preview {
+                image,
+                shown_at: now,
+            };
         }
         true
     }
@@ -347,7 +354,7 @@ impl Engine {
     fn button_opacity(&self) -> f32 {
         match &self.capture {
             CaptureState::Preview { shown_at, .. } => {
-                Self::buttons_opacity_at((Instant::now() - *shown_at).as_secs_f32())
+                Self::buttons_opacity_at((*shown_at).elapsed().as_secs_f32())
             }
             _ => 0.0,
         }
@@ -400,27 +407,27 @@ impl Engine {
         }
     }
 
-    // TODO: Remove "Magic Numbers"
     fn build_button_texts(&self, buttons: &[ButtonRect; 2], opacity: f32) -> Vec<CanvasText> {
-        if opacity < 0.01 {
+        if opacity < BUTTON_MIN_OPACITY {
             return Vec::new();
         }
         buttons
             .iter()
             .map(|btn| {
-                let cx = (btn.screen[0] + btn.screen[2]) * 0.5;
-                let cy = (btn.screen[1] + btn.screen[3]) * 0.5;
+                let cx = f32::midpoint(btn.screen[0], btn.screen[2]);
+                let cy = f32::midpoint(btn.screen[1], btn.screen[3]);
                 let sz = 15.0 / self.canvas.camera.zoom;
-                let est_w = btn.label.len() as f32 * sz * 0.32;
+                let est_w = btn.label.len() as f32 * sz * BUTTON_CHAR_WIDTH_RATIO;
                 let world = self
                     .canvas
                     .camera
-                    .screen_to_world(Vec2::new(cx - est_w, cy - sz * 0.55));
+                    .screen_to_world(Vec2::new(cx - est_w, cy - sz * BUTTON_BASELINE_SHIFT));
                 CanvasText {
                     position: world,
                     text: btn.label.to_string(),
                     size: sz,
                     color: Color::WHITE.with_alpha(opacity),
+                    font: None,
                 }
             })
             .collect()
@@ -465,7 +472,7 @@ impl Engine {
                     return true;
                 }
                 Some(Ok(rgba)) => {
-                    if let Err(e) = job.builder.add_page(rgba) {
+                    if let Err(e) = job.builder.add_page(&rgba) {
                         tracing::error!("pdf page failed: {e}");
                         return true;
                     }
@@ -501,8 +508,7 @@ impl Engine {
             Ok(bytes) => {
                 let stamp = web_time::SystemTime::now()
                     .duration_since(web_time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
+                    .map_or(0, |d| d.as_secs());
                 export::save::save_bytes(
                     &bytes,
                     "application/pdf",
@@ -516,6 +522,7 @@ impl Engine {
 
     pub fn undo(&mut self) -> bool {
         self.draw.end(&mut self.canvas);
+        self.eraser.release(&mut self.canvas);
         #[cfg(debug_assertions)]
         {
             self.finish_test_interaction();
@@ -531,6 +538,7 @@ impl Engine {
 
     pub fn redo(&mut self) -> bool {
         self.draw.end(&mut self.canvas);
+        self.eraser.release(&mut self.canvas);
         #[cfg(debug_assertions)]
         {
             self.finish_test_interaction();

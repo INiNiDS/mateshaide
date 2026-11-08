@@ -16,6 +16,3 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {}
-
-
-// TODO: Make all TODOs

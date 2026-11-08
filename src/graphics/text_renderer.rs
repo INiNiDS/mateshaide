@@ -9,8 +9,7 @@ use glyphon::{
 use wgpu::MultisampleState;
 
 const MIN_SCREEN_FONT_PX: f32 = 4.0; // Too small...
-const MAX_SCREEN_FONT_PX: f32 = 2000000000000000000.0; // Too big... Hmmm I'm thinking that doing nothing, because of is visible function...
-const FONT_BYTES: &[u8] = include_bytes!("../../assets/Roboto-Black.ttf");
+const MAX_SCREEN_FONT_PX: f32 = 2000000000000000000.0; // Too big... Hmmm I'm thinking that doing nothing, because of is visible function... TODO
 
 struct LaidOutText {
     buffer: Buffer,
@@ -22,6 +21,7 @@ struct LaidOutText {
 
 pub struct TextLayer {
     font_system: FontSystem,
+    fonts_loaded: usize,
     swash_cache: SwashCache,
     cache: Cache,
     viewport: Viewport,
@@ -34,8 +34,8 @@ pub struct TextLayer {
 impl TextLayer {
     #[must_use]
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
-        let mut font_system = FontSystem::new();
-        font_system.db_mut().load_font_data(FONT_BYTES.to_vec());
+        let mut fonts_loaded = 0;
+        let font_system = super::fonts::font_system(&mut fonts_loaded);
 
         let cache = Cache::new(device);
         let viewport = Viewport::new(device, &cache);
@@ -44,6 +44,7 @@ impl TextLayer {
 
         Self {
             font_system,
+            fonts_loaded,
             swash_cache: SwashCache::new(),
             cache,
             viewport,
@@ -64,6 +65,7 @@ impl TextLayer {
         let width = camera.screen_size.x.max(1.0) as u32;
         let height = camera.screen_size.y.max(1.0) as u32;
         self.viewport.update(queue, Resolution { width, height });
+        super::fonts::sync(&mut self.font_system, &mut self.fonts_loaded);
 
         self.laid_out.clear();
         for t in texts {
@@ -78,12 +80,13 @@ impl TextLayer {
             }
 
             let metrics = Metrics::new(t.size, t.size * 1.25);
+            let family = super::fonts::resolve(t.font.as_deref());
             let mut buffer = Buffer::new(&mut self.font_system, metrics);
             buffer.set_wrap(glyphon::Wrap::None);
             buffer.set_text(
                 &t.text,
                 &Attrs::new()
-                    .family(Family::Name("Roboto"))
+                    .family(Family::Name(&family))
                     .color(t.color.into()),
                 Shaping::Advanced,
                 None,
@@ -165,7 +168,7 @@ impl TextLayer {
 }
 
 fn is_visible(screen: Vec2, px: f32, text: &str, screen_size: Vec2) -> bool {
-    let approx_w = text.lines().map(|s|s.chars().count()).max().unwrap_or(0) as f32 * px * 1.5;
+    let approx_w = text.lines().map(|s| s.chars().count()).max().unwrap_or(0) as f32 * px * 1.5;
     let approx_h = text.split('\n').count().max(1) as f32 * px * 1.25;
 
     let right = screen.x + approx_w;

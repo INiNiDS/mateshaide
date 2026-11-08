@@ -69,7 +69,9 @@ mod native {
                 }
             }
 
-            let Some(clipboard) = slot.as_mut() else { return };
+            let Some(clipboard) = slot.as_mut() else {
+                return;
+            };
 
             let img = ImageData {
                 width: width as usize,

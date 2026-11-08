@@ -8,4 +8,6 @@ pub struct CanvasText {
     pub text: String,
     pub size: f32, // in world units
     pub color: Color,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
 }

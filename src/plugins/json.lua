@@ -10,11 +10,27 @@ function J.array(...)
 end
 local function escape(s)
     assert(utf8.len(s), "JSON string is not UTF-8")
+    if not s:find('[%z\1-\31\\"]') then
+        return '"' .. s .. '"'
+    end
     return '"' .. s:gsub('[%z\1-\31\\"]', function(c)
         local escapes = { ['"'] = '\\"', ['\\'] = '\\\\', ['\b'] = '\\b', ['\f'] = '\\f', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t' }
         return escapes[c] or string.format('\\u%04x', c:byte())
     end) .. '"'
 end
+local key_cache, key_cached = {}, 0
+local function escape_key(k)
+    local e = key_cache[k]
+    if not e then
+        e = escape(k)
+        if key_cached >= 4096 then
+            key_cache, key_cached = {}, 0
+        end
+        key_cache[k], key_cached = e, key_cached + 1
+    end
+    return e
+end
+
 function J.encode(value)
     local active, pieces, bytes, count = {}, {}, 0, 0
     local function put(s)
@@ -76,7 +92,7 @@ function J.encode(value)
                     if i > 1 then
                         put(',')
                     end
-                    put(escape(k));
+                    put(escape_key(k));
                     put(':');
                     emit(rawget(v, k), depth + 1)
                 end

@@ -1,11 +1,11 @@
 id = "org.matesha.text"
 name = "Text Editor"
 version = "1.0.0"
-description = "A Lua text editor: multiple blocks, Unicode grapheme editing, mouse selection, Shift navigation, Home/End, multiline text, IME preedit, clipboard and insert.v1 service. Editing logic is in main.lua."
+description = "Native text & LaTeX-style 2D math editor: resizable & movable blocks, auto-symbols (int, sum, prod, sqrt, pi...), Shift for superscripts/upper limits, Ctrl for subscripts/lower limits, visual fractions with //, and insert.v1 + command.v1 services."
 authors = ["Nikita Goncharov"]
 repository = "https://github.com/ininids/mateshaide"
 icon = "assets/icon.png"
 entry = "main.lua"
 api = "^1.0"
-permissions = ["document.write", "clipboard.read", "clipboard.write"]
+permissions = ["document.write", "clipboard.read", "clipboard.write", "files.pick"]
 dependencies = []

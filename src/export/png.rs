@@ -15,7 +15,9 @@ pub struct CapturedPng {
     pub height: u32,
 }
 
+#[derive(Default)]
 pub enum CaptureState {
+    #[default]
     Idle,
     Converge {
         started: Instant,
@@ -27,17 +29,13 @@ pub enum CaptureState {
     },
 }
 
-impl Default for CaptureState {
-    fn default() -> Self {
-        CaptureState::Idle
-    }
-}
-
 impl CaptureState {
+    #[must_use]
     pub fn is_idle(&self) -> bool {
         matches!(self, CaptureState::Idle)
     }
 
+    #[must_use]
     pub fn is_preview(&self) -> bool {
         matches!(self, CaptureState::Preview { .. })
     }

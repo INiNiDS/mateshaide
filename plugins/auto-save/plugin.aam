@@ -1,0 +1,11 @@
+id = "org.matesha.autosave"
+name = "Auto-Save"
+version = "1.0.0"
+description = "Saves the whole canvas automatically: 2 s after the last change, at least every 30 s while you keep editing, and when the window closes. Restores the last session into an empty canvas on start."
+authors = ["Nikita Goncharov"]
+repository = "https://github.com/ininids/mateshaide"
+icon = "assets/icon.png"
+entry = "main.lua"
+api = "^1.0"
+permissions = ["document.autosave"]
+dependencies = []

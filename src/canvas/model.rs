@@ -12,6 +12,15 @@ const STEP_PIXELS: f32 = 50.0;
 const FRICTION: f32 = 12.0;
 const VELOCITY_SAMPLE_WINDOW_SECS: f32 = 0.08;
 
+#[derive(Debug, Clone)]
+pub struct FinishedInk {
+    pub plugin: String,
+    pub node: String,
+    pub points: Vec<Vec2>,
+    pub width: f32,
+    pub color: Color,
+}
+
 pub struct Canvas {
     pub camera: Camera,
     pub instances: Vec<ShapeInstance>,
@@ -23,6 +32,13 @@ pub struct Canvas {
     stroke_last: Option<Vec2>,
     stroke_segments: usize,
     stroke_snapshot: bool,
+    stroke_group: u32,
+    next_stroke_group: u32,
+    pending_owner: Option<(String, String)>,
+    stroke_owner: Option<(String, String)>,
+    stroke_points: Vec<Vec2>,
+    stroke_style: Option<(f32, Color)>,
+    finished_ink: Vec<FinishedInk>,
     pub texts: Vec<CanvasText>,
     pub plugin_nodes: Vec<crate::plugins::PluginNode>,
 }
@@ -41,6 +57,13 @@ impl Canvas {
             stroke_last: None,
             stroke_segments: 0,
             stroke_snapshot: false,
+            stroke_group: 0,
+            next_stroke_group: 0,
+            pending_owner: None,
+            stroke_owner: None,
+            stroke_points: Vec::new(),
+            stroke_style: None,
+            finished_ink: Vec::new(),
             texts: Vec::new(),
             plugin_nodes: Vec::new(),
         }
@@ -72,6 +95,34 @@ impl Canvas {
             .record_snapshot(&self.instances, &self.texts, &self.plugin_nodes);
         self.instances.remove(index);
         true
+    }
+
+    pub(crate) fn begin_batch(&mut self) -> bool {
+        self.history
+            .record_snapshot(&self.instances, &self.texts, &self.plugin_nodes)
+    }
+
+    pub(crate) fn discard_batch(&mut self) {
+        self.history.discard_last_undo();
+    }
+
+    pub(crate) fn remove_hit(&mut self, hit: super::hit::Hit) -> bool {
+        use super::hit::Hit;
+        match hit {
+            Hit::Node(i) if i < self.plugin_nodes.len() => {
+                self.plugin_nodes.remove(i);
+                true
+            }
+            Hit::Text(i) if i < self.texts.len() => {
+                self.texts.remove(i);
+                true
+            }
+            Hit::Shape(i) if i < self.instances.len() => {
+                self.instances.remove(i);
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn erase_at_world(&mut self, world: Vec2) -> bool {
@@ -107,6 +158,10 @@ impl Canvas {
         self.stroke_active
     }
 
+    pub fn set_stroke_owner(&mut self, owner: Option<(String, String)>) {
+        self.pending_owner = owner;
+    }
+
     pub fn begin_stroke(&mut self) {
         if self.stroke_active {
             return;
@@ -118,6 +173,11 @@ impl Canvas {
         self.stroke_active = true;
         self.stroke_last = None;
         self.stroke_segments = 0;
+        self.next_stroke_group = self.next_stroke_group.wrapping_add(1).max(1);
+        self.stroke_group = self.next_stroke_group;
+        self.stroke_owner = self.pending_owner.take();
+        self.stroke_points.clear();
+        self.stroke_style = None;
     }
 
     pub fn extend_stroke(&mut self, world: Vec2, width: f32, color: Color) {
@@ -126,18 +186,30 @@ impl Canvas {
         }
 
         match self.stroke_last {
-            None => self.stroke_last = Some(world),
+            None => {
+                self.stroke_last = Some(world);
+                self.note_ink_point(world, width, color);
+            }
             Some(last) => {
                 if last.distance(world) < MIN_STROKE_STEP {
                     return;
                 }
 
-                self.instances
-                    .push(ShapeInstance::line(last, world, width * 0.5, color));
-
+                self.instances.push(
+                    ShapeInstance::line(last, world, width * 0.5, color)
+                        .with_stroke(self.stroke_group),
+                );
                 self.stroke_last = Some(world);
                 self.stroke_segments += 1;
+                self.note_ink_point(world, width, color);
             }
+        }
+    }
+
+    fn note_ink_point(&mut self, world: Vec2, width: f32, color: Color) {
+        if self.stroke_owner.is_some() {
+            self.stroke_points.push(world);
+            self.stroke_style = Some((width, color));
         }
     }
 
@@ -149,9 +221,40 @@ impl Canvas {
         self.stroke_active = false;
         self.stroke_last = None;
 
+        if let Some((plugin, node)) = self.stroke_owner.take() {
+            let group = self.stroke_group;
+            self.instances.retain(|shape| shape.stroke_id() != group);
+            if self.stroke_snapshot {
+                self.history.discard_last_undo();
+            }
+
+            let points = std::mem::take(&mut self.stroke_points);
+            if let (Some((width, color)), true) = (self.stroke_style.take(), points.len() >= 2) {
+                self.finished_ink.push(FinishedInk {
+                    plugin,
+                    node,
+                    points,
+                    width,
+                    color,
+                });
+            }
+            return;
+        }
+
         if self.stroke_segments == 0 && self.stroke_snapshot {
             self.history.discard_last_undo();
         }
+    }
+
+    /// Removes every segment of one freehand stroke.
+    pub(crate) fn remove_stroke(&mut self, group: u32) -> bool {
+        let before = self.instances.len();
+        self.instances.retain(|shape| shape.stroke_id() != group);
+        self.instances.len() != before
+    }
+
+    pub fn take_finished_ink(&mut self) -> Vec<FinishedInk> {
+        std::mem::take(&mut self.finished_ink)
     }
 
     pub fn resize(&mut self, width: f32, height: f32) {

@@ -94,34 +94,11 @@ pub(super) fn resize_instance(
     result
 }
 
-pub(super) fn contains(shape: &ShapeInstance, world: Vec2, registry: &ShapeRegistry) -> bool {
-    let p = world - Vec2::from_array(shape.center);
-    let half = Vec2::from_array(shape.size) / 2.0;
-    if p.x.abs() > half.x || p.y.abs() > half.y {
-        return false;
-    }
-    if registry.kind("rounded_rect") == Some(shape.kind) {
-        let q = p.abs() - Vec2::new(shape.a[0], shape.a[1]);
-        return q.max(Vec2::ZERO).length() + q.max_element().min(0.0) - shape.a[2] <= 0.0;
-    }
-    if registry.kind("hexagon") == Some(shape.kind) {
-        let k = Vec2::new(-COS_30, 0.5);
-        let mut q = p.abs();
-        q -= 2.0 * k.dot(q).min(0.0) * k;
-        q -= Vec2::new(
-            q.x.clamp(-0.577_350_26 * shape.a[0], 0.577_350_26 * shape.a[0]),
-            shape.a[0],
-        );
-        return q.y <= 0.0;
-    }
-    shape.contains_world(world)
-}
+#[cfg(test)]
+pub(super) use crate::canvas::hit::shape_contains as contains;
 
 pub(super) fn pick(canvas: &mut Canvas, world: Vec2, registry: &ShapeRegistry) -> Option<usize> {
-    canvas
-        .instances
-        .iter()
-        .rposition(|shape| contains(shape, world, registry))
+    crate::canvas::hit::shape_at(canvas, world, registry)
 }
 
 pub(super) fn resize_from_corner(

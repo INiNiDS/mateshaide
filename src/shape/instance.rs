@@ -8,13 +8,22 @@ pub const KIND_CIRCLE: u32 = 1;
 pub const KIND_LINE: u32 = 2;
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    bytemuck::Pod,
+    bytemuck::Zeroable,
+)]
 pub struct ShapeInstance {
     pub center: [f32; 2],
     pub size: [f32; 2],
     pub color: Color,
     pub kind: u32,
-    pub _pad: [u32; 3],
+    pub meta: [u32; 3],
     pub a: [f32; 4],
     pub b: [f32; 4],
 }
@@ -26,7 +35,7 @@ impl ShapeInstance {
             size: size.to_array(),
             color: color.into(),
             kind,
-            _pad: [0; 3],
+            meta: [0; 3],
             a: [0.0; 4],
             b: [0.0; 4],
         }
@@ -37,6 +46,17 @@ impl ShapeInstance {
         self.a = a;
         self.b = b;
         self
+    }
+
+    #[must_use]
+    pub fn with_stroke(mut self, group: u32) -> Self {
+        self.meta[0] = group;
+        self
+    }
+
+    #[must_use]
+    pub fn stroke_id(&self) -> u32 {
+        self.meta[0]
     }
 
     pub fn rect(x: f32, y: f32, width: f32, height: f32, color: impl Into<Color>) -> Self {

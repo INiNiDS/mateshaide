@@ -52,7 +52,7 @@ fn shape_rect(shape: &ShapeInstance) -> Rect {
     }
 }
 
-fn text_rect(text: &CanvasText) -> Rect {
+pub(crate) fn text_rect(text: &CanvasText) -> Rect {
     let mut max_columns = 0usize;
     let mut line_count = 0usize;
 

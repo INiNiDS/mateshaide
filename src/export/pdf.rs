@@ -1,7 +1,10 @@
 use crate::export::ExportError;
 use crate::export::bounds::Rect;
 use glam::Vec2;
-use printpdf::{Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, RawImageData, RawImageFormat, XObjectTransform};
+use printpdf::{
+    Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, RawImageData, RawImageFormat,
+    XObjectTransform,
+};
 
 pub const PAGE_WIDTH_MM: f32 = 210.0;
 pub const PAGE_HEIGHT_MM: f32 = 297.0;
@@ -57,13 +60,15 @@ impl PdfBuilder {
         }
     }
 
-    pub fn add_page(&mut self, rgba: Vec<u8>) -> Result<(), ExportError> {
+    pub fn add_page(&mut self, rgba: &[u8]) -> Result<(), ExportError> {
         if self.pages.len() >= MAX_PAGES {
             return Err(ExportError::TooManyPages(self.pages.len() + 1));
         }
 
         let rgb = rgba
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|px| [px[0], px[1], px[2]])
             .collect::<Vec<u8>>();
 
@@ -82,7 +87,7 @@ impl PdfBuilder {
             transform: XObjectTransform {
                 dpi: Some(dpi),
                 ..Default::default()
-            }
+            },
         }];
 
         self.pages
@@ -98,5 +103,11 @@ impl PdfBuilder {
 
         let mut warnings = Vec::new();
         Ok(self.doc.save(&PdfSaveOptions::default(), &mut warnings))
+    }
+}
+
+impl Default for PdfBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }

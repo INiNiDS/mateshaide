@@ -1,8 +1,8 @@
+use crate::canvas::CanvasText;
 use crate::core::Color;
 use crate::engine::Engine;
 use crate::palette;
 use crate::shape::ShapeInstance;
-use crate::canvas::CanvasText;
 use glam::Vec2;
 
 const HELP_TEXT: &str = "\
@@ -11,6 +11,7 @@ MateshaIDE: controls
 DRAWING
   Ctrl+9              toggle draw mode
   LMB + drag          draw (when draw mode is on)
+  E                   toggle eraser; click removes an object, drag erases strokes
 
 HISTORY
   Ctrl+Z              undo
@@ -41,7 +42,6 @@ DEV TOOLS (debug builds only)
   Ctrl+2..5           rect / circle / hexagon / rounded_rect
   Ctrl+6              color mode: Cycle / Fixed / Picked
   Ctrl+7              next palette color (Picked)
-  Ctrl+8              toggle eraser; LMB / 1 removes a shape
   V / Ctrl+Shift+1    toggle selection mode
   LMB + drag          select and move topmost shape
   Drag corner         resize selected shape
@@ -94,12 +94,14 @@ pub(super) fn seed_demo_shapes(engine: &mut Engine) {
         text: "Hello, MateshaIDE!".to_owned(),
         size: 24.0,
         color: palette::GRAY_900,
+        font: None,
     });
 
-   engine.canvas.add_text(CanvasText {
+    engine.canvas.add_text(CanvasText {
         position: Vec2::new(-600.0, 400.0),
         text: HELP_TEXT.to_owned(),
         size: 16.0,
         color: palette::GRAY_700,
+        font: None,
     });
 }

@@ -11,7 +11,19 @@ pub const PERMISSIONS: &[&str] = &[
     "plugins.call",
     "clipboard.read",
     "clipboard.write",
+    "files.pick",
+    "help.read",
+    "document.autosave",
 ];
+
+const MAX_MANIFEST_BYTES: usize = 65_536;
+const MAX_NESTING: usize = 16;
+const MAX_ID_BYTES: usize = 128;
+const MAX_NAME_BYTES: usize = 128;
+const MAX_DESCRIPTION_BYTES: usize = 4096;
+const MAX_AUTHORS: usize = 32;
+const MAX_PATH_BYTES: usize = 256;
+const MAX_REPOSITORY_BYTES: usize = 2048;
 
 #[derive(Debug, Clone, aam_rs::FromAam)]
 pub struct Dependency {
@@ -44,6 +56,22 @@ pub struct Manifest {
 }
 
 impl Manifest {
+    pub fn parse(text: &str) -> Result<Self> {
+        data_only(text)?;
+
+        let mut manifest =
+            Self::from_aam_str(text).map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
+
+        manifest.normalize();
+        manifest.validate()?;
+
+        Ok(manifest)
+    }
+
+    pub fn permits(&self, permission: &str) -> bool {
+        self.permissions.iter().any(|p| p == permission)
+    }
+
     fn normalize(&mut self) {
         document_string(&mut self.id);
         document_string(&mut self.name);
@@ -65,39 +93,37 @@ impl Manifest {
         }
     }
 
-    pub fn parse(text: &str) -> Result<Self> {
-        data_only(text)?;
-
-        let mut m = Self::from_aam_str(text)
-            .map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
-
-        m.normalize();
-
-        ensure!(valid_id(&m.id) && m.id.contains('.'), "invalid plugin ID");
+    fn validate(&self) -> Result<()> {
         ensure!(
-            !m.name.trim().is_empty() && m.name.len() <= 128,
+            valid_id(&self.id) && self.id.contains('.'),
+            "invalid plugin ID"
+        );
+        ensure!(
+            !self.name.trim().is_empty() && self.name.len() <= MAX_NAME_BYTES,
             "invalid name"
         );
         ensure!(
-            m.description.len() <= 4096 && m.authors.len() <= 32,
+            self.description.len() <= MAX_DESCRIPTION_BYTES && self.authors.len() <= MAX_AUTHORS,
             "metadata too large"
         );
-        Version::parse(&m.version)?;
-        VersionReq::parse(&m.api)?;
-        repository(&m.repository)?;
-        relative_name(&m.entry)?;
-        relative_name(&m.icon)?;
+
+        Version::parse(&self.version)?;
+        VersionReq::parse(&self.api)?;
+        repository(&self.repository)?;
+        relative_name(&self.entry)?;
+        relative_name(&self.icon)?;
+
         ensure!(
-            Path::new(&m.entry)
+            Path::new(&self.entry)
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("lua")),
             "entry must be a .lua file"
         );
 
         let mut deps = BTreeSet::new();
-        for dep in &m.dependencies {
+        for dep in &self.dependencies {
             ensure!(
-                valid_id(&dep.id) && dep.id != m.id && deps.insert(dep.id.clone()),
+                valid_id(&dep.id) && dep.id != self.id && deps.insert(dep.id.clone()),
                 "invalid or duplicate dependency"
             );
             VersionReq::parse(&dep.version)?;
@@ -105,23 +131,22 @@ impl Manifest {
         }
 
         let mut perms = BTreeSet::new();
-        for p in &m.permissions {
+        for p in &self.permissions {
             ensure!(
                 PERMISSIONS.contains(&p.as_str()) && perms.insert(p.clone()),
                 "unknown or duplicate permission: {p}"
             );
         }
 
-        Ok(m)
-    }
-
-    pub fn permits(&self, permission: &str) -> bool {
-        self.permissions.iter().any(|p| p == permission)
+        Ok(())
     }
 }
 
 pub fn relative_name(name: &str) -> Result<()> {
-    ensure!(!name.is_empty() && name.len() < 256, "invalid package path");
+    ensure!(
+        !name.is_empty() && name.len() < MAX_PATH_BYTES,
+        "invalid package path"
+    );
     ensure!(
         !name.contains('\\') && !name.contains(':') && !name.starts_with('/'),
         "absolute path forbidden"
@@ -134,60 +159,85 @@ pub fn relative_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-// Already high complexity...  TODO!!!
 fn data_only(text: &str) -> Result<()> {
-    ensure!(text.len() <= 65536, "manifest too large");
-    let mut quote = None;
-    let mut escape = false;
-    let mut comment = false;
-    let mut depth = 0usize;
+    ensure!(text.len() <= MAX_MANIFEST_BYTES, "manifest too large");
+
+    let mut scanner = DataScanner::default();
+
     for ch in text.chars() {
-        if comment {
-            if ch == '\n' {
-                comment = false;
-            }
-            continue;
+        scanner.feed(ch)?;
+    }
+
+    scanner.finish()
+}
+
+#[derive(Default)]
+struct DataScanner {
+    quote: Option<char>,
+    escape: bool,
+    comment: bool,
+    depth: usize,
+}
+
+impl DataScanner {
+    fn feed(&mut self, ch: char) -> Result<()> {
+        if self.comment {
+            self.comment = ch != '\n';
+            return Ok(());
         }
-        if let Some(q) = quote {
-            if escape {
-                escape = false;
+
+        if let Some(quote) = self.quote {
+            if self.escape {
+                self.escape = false;
             } else if ch == '\\' {
-                escape = true;
-            } else if ch == q {
-                quote = None;
+                self.escape = true;
+            } else if ch == quote {
+                self.quote = None;
             }
-            continue;
+            return Ok(());
         }
+
         match ch {
-            '"' | '\'' => quote = Some(ch),
-            '#' => comment = true,
+            '"' | '\'' => self.quote = Some(ch),
+            '#' => self.comment = true,
             '@' => bail!("AAM directives are forbidden in plugin metadata"),
             '{' | '[' => {
-                depth += 1;
-                ensure!(depth <= 16, "manifest nesting too deep");
+                self.depth += 1;
+                ensure!(self.depth <= MAX_NESTING, "manifest nesting too deep");
             }
             '}' | ']' => {
-                depth = depth
+                self.depth = self
+                    .depth
                     .checked_sub(1)
                     .ok_or_else(|| anyhow::anyhow!("unbalanced manifest"))?;
             }
             _ => {}
         }
+
+        Ok(())
     }
-    ensure!(quote.is_none() && depth == 0, "unterminated manifest");
-    Ok(())
+
+    fn finish(&self) -> Result<()> {
+        ensure!(
+            self.quote.is_none() && self.depth == 0,
+            "unterminated manifest"
+        );
+        Ok(())
+    }
 }
 
 pub fn valid_id(s: &str) -> bool {
     !s.is_empty()
-        && s.len() <= 128
+        && s.len() <= MAX_ID_BYTES
         && s.bytes()
             .all(|c| c.is_ascii_alphanumeric() || b".-_".contains(&c))
 }
 
 fn repository(s: &str) -> Result<()> {
     ensure!(
-        s.starts_with("https://") && s.len() < 2048 && !s.chars().any(char::is_control),
+        s.starts_with("https://")
+            && s.len() < MAX_REPOSITORY_BYTES
+            && !s.chars().any(char::is_control),
         "repository must be a HTTPS URL"
     );
     Ok(())
@@ -197,7 +247,10 @@ fn document_string(value: &mut String) {
     let trimmed = value.trim();
 
     for quote in ['"', '\''] {
-        if let Some(inner) = trimmed.strip_prefix(quote).and_then(|s| s.strip_suffix(quote)) {
+        if let Some(inner) = trimmed
+            .strip_prefix(quote)
+            .and_then(|s| s.strip_suffix(quote))
+        {
             *value = inner.to_owned();
             return;
         }
