@@ -343,6 +343,7 @@ pub fn discover() -> (Vec<Package>, Vec<String>) {
             "assets/help/15-api-help-pages.md",
         ]
     );
+    bundled!("auto-save", ["assets/icon.png", "assets/help/auto-save.md"]);
 
     for stored in super::platform::browser_packages() {
         match Package::from_files(stored, "browser storage".into()) {

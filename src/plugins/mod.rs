@@ -14,6 +14,7 @@ mod ui;
 #[cfg(test)]
 pub mod tests;
 mod panel;
+pub mod autosave;
 
 pub use document::PluginNode;
 

@@ -61,67 +61,138 @@ impl ApplicationHandler for App {
         pollster::block_on(init);
     }
 
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let Ok(mut slot) = self.engine.try_borrow_mut() else {
+            return;
+        };
+        let Some(engine) = slot.as_mut() else {
+            return;
+        };
+        let (next, redraw) = engine.plugin_tick();
+        event_loop.set_control_flow(next.map_or(
+            winit::event_loop::ControlFlow::Wait,
+            winit::event_loop::ControlFlow::WaitUntil
+        ));
+        if redraw && let Some(window) = self.window.borrow().as_ref() {
+            window.request_redraw();
+        }
+    }
+
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
         window_id: WindowId,
         event: WindowEvent,
     ) {
-        let window = match self.window.borrow().as_ref() {
-            Some(window) if window.id() == window_id => Arc::clone(window),
-            _ => return,
+        let Some(window) = self.window_for(window_id) else {
+            return;
         };
 
-        if matches!(&event, WindowEvent::CloseRequested) {
-            info!("Window {window_id:?} close requested");
-            event_loop.exit();
+        if matches!(event, WindowEvent::CloseRequested) {
+            self.handle_close(event_loop, window_id);
             return;
         }
 
-        let mut engine_guard = self.engine.borrow_mut();
+        let engine_cell = Rc::clone(&self.engine);
+        let mut engine_guard = engine_cell.borrow_mut();
         let Some(engine) = engine_guard.as_mut() else {
             return;
         };
 
-        match &event {
-            WindowEvent::RedrawRequested => {
-                Self::handle_redraw_requested(&window, engine);
-                return;
-            }
-            WindowEvent::Resized(size) => {
-                Self::handle_window_resized(&window, engine, size.width, size.height);
-                return;
-            }
-            _ => {}
+        if Self::handle_system_event(engine, &window, &event) {
+            return;
         }
 
         if engine.is_capturing() {
-            let update = self.input.process_event_without_actions(&event);
-            if matches!(update, InputUpdate::FocusLost) {
-                Self::handle_input_update(&self.input, engine, update, &window);
-            }
+            self.handle_captured_event(engine, &window, &event);
+        } else {
+            self.handle_regular_event(engine, &window, &event);
+        }
+    }
+}
 
-            if let WindowEvent::CursorMoved { position, .. } = &event {
-                engine.capture_cursor = Vec2::new(position.x as f32, position.y as f32);
-            }
+impl App {
+    fn window_for(&self, window_id: WindowId) -> Option<Arc<Window>> {
+        self.window
+            .borrow()
+            .as_ref()
+            .filter(|window| window.id() == window_id)
+            .cloned()
+    }
 
-            Self::handle_capture_event(engine, &event, &window);
-            return;
+    fn handle_close(&self, event_loop: &ActiveEventLoop, window_id: WindowId) {
+        info!("Window {window_id:?} close requested");
+        if let Ok(mut slot) = self.engine.try_borrow_mut()
+            && let Some(engine) = slot.as_mut()
+        {
+            engine.plugins_before_exit();
+        }
+        event_loop.exit();
+    }
+
+    fn handle_system_event(
+        engine: &mut Engine,
+        window: &Arc<Window>,
+        event: &WindowEvent,
+    ) -> bool {
+        match event {
+            WindowEvent::RedrawRequested => {
+                Self::handle_redraw_requested(window, engine);
+                true
+            }
+            WindowEvent::Resized(size) => {
+                Self::handle_window_resized(window, engine, size.width, size.height);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn process_input_without_actions(
+        &mut self,
+        engine: &mut Engine,
+        window: &Arc<Window>,
+        event: &WindowEvent,
+    ) {
+        let update = self.input.process_event_without_actions(event);
+        if matches!(update, InputUpdate::FocusLost) {
+            Self::handle_input_update(&self.input, engine, update, window);
+        }
+    }
+
+    fn handle_captured_event(
+        &mut self,
+        engine: &mut Engine,
+        window: &Arc<Window>,
+        event: &WindowEvent,
+    ) {
+        self.process_input_without_actions(engine, window, event);
+
+        if let WindowEvent::CursorMoved { position, .. } = event {
+            engine.capture_cursor = Vec2::new(position.x as f32, position.y as f32);
         }
 
-        if engine.handle_plugin_event(&event, self.input.cursor_position(), self.input.modifiers())
-        {
-            let update = self.input.process_event_without_actions(&event);
-            if matches!(update, InputUpdate::FocusLost) {
-                Self::handle_input_update(&self.input, engine, update, &window);
-            }
+        Self::handle_capture_event(engine, event, window);
+    }
+
+    fn handle_regular_event(
+        &mut self,
+        engine: &mut Engine,
+        window: &Arc<Window>,
+        event: &WindowEvent,
+    ) {
+        if engine.handle_plugin_event(event, self.input.cursor_position(), self.input.modifiers()) {
+            self.process_input_without_actions(engine, window, event);
             window.request_redraw();
             return;
-        } else {
-            let update = self.input.process_event(&event, engine);
-            Self::handle_input_update(&self.input, engine, update, &window);
         }
 
+        let update = self.input.process_event(event, engine);
+        Self::handle_input_update(&self.input, engine, update, window);
+        self.sync_cursor(engine, window);
+    }
+
+    fn sync_cursor(&mut self, engine: &Engine, window: &Arc<Window>) {
         let cursor = engine.cursor_icon();
         if cursor != self.cursor {
             self.cursor = cursor;

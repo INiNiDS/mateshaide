@@ -65,6 +65,7 @@ pub struct PluginManager {
     history_group: Option<String>,
     group_recorded: bool,
     pub(crate) panel_host: super::panel::PanelHost,
+    pub(crate) host: super::autosave::HostState,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,6 +80,7 @@ struct Transaction {
     budget: usize,
     effects: Vec<String>,
     pick: Option<(String, Value)>,
+    document_ops: Vec<(String, String)>,
     started: web_time::Instant,
 }
 
@@ -90,6 +92,7 @@ impl Transaction {
             budget: EVENT_COMMAND_BUDGET,
             effects: Vec::new(),
             pick: None,
+            document_ops: vec![],
             started: web_time::Instant::now(),
         }
     }
@@ -114,6 +117,7 @@ impl PluginManager {
             history_group: None,
             group_recorded: false,
             panel_host: super::panel::PanelHost::default(),
+            host: super::autosave::HostState::default(),
         }
     }
 
@@ -325,7 +329,11 @@ impl PluginManager {
         let undo = self.snapshot();
         let mut tx = Transaction::new(id, canvas.plugin_nodes.clone());
         match self.run_handler(id, event, &mut tx) {
-            Ok(()) => self.commit_nodes(id, canvas, tx.nodes),
+            Ok(()) => {
+                let ops = std::mem::take(&mut tx.document_ops);
+                self.commit_nodes(id, canvas, tx.nodes);
+                self.run_document_ops(ops, canvas);
+            },
             Err(e) => {
                 undo(&mut *self);
                 self.notice = format!("Plugin {id}: transaction rejected: {e:#}");
@@ -633,6 +641,11 @@ impl PluginManager {
                 tx.pick = Some((accept.to_owned(), cmd["token"].clone()));
                 Ok(())
             }
+            "document.save" | "document.restore" => {
+                self.permission(id, super::autosave::PERMISSION)?;
+                Self::queue_document_op(&mut tx.document_ops, id, kind)
+            }
+            "status.set" => self.set_status(id, cmd),
             _ => bail!("unknown host operation: {kind}"),
         }
     }

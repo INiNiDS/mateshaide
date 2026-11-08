@@ -68,7 +68,7 @@ pub enum UiAction {
     ExportPdf,
     ToggleEraser,
     ToggleText,
-    PanelButton(String, String)
+    PanelButton(String, String),
 }
 
 #[derive(Default)]
@@ -450,8 +450,8 @@ impl PluginManager {
             (("PNG", UiAction::ExportPng), false),
             (("PDF", UiAction::ExportPdf), false),
         ]
-        .into_iter()
-        .zip(layout.system_buttons)
+            .into_iter()
+            .zip(layout.system_buttons)
         {
             frame.button(camera, bounds, label, action, selected);
         }
@@ -739,16 +739,17 @@ impl PluginManager {
                     tool.label.as_str()
                 });
 
+            let title = match self.host.statuses.get(&group.plugin_id) {
+                Some(status) => format!("{title} ({status})"),
+                None => title.into(),
+            };
             body.text(
                 camera,
                 bounds[0] + PANEL_PAD,
-                bounds[1] + 7.0,
-                11.0,
-                clipped(
-                    title,
-                    ((bounds[2] - bounds[0] - 20.0) / 7.0).max(1.0) as usize,
-                ),
-                frame.theme.muted,
+                bounds[1] + 16.0,
+                14.0,
+                clipped(&title, ((bounds[2] - bounds[0] - 2.0 * PANEL_PAD) / 7.0).max(1.0) as usize),
+                body.theme.text,
             );
 
             for (command, button) in entry.contributions.commands.iter().zip(&group.buttons) {
