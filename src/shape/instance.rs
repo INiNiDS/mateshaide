@@ -23,7 +23,7 @@ pub struct ShapeInstance {
     pub size: [f32; 2],
     pub color: Color,
     pub kind: u32,
-    pub _pad: [u32; 3],
+    pub meta: [u32; 3],
     pub a: [f32; 4],
     pub b: [f32; 4],
 }
@@ -35,7 +35,7 @@ impl ShapeInstance {
             size: size.to_array(),
             color: color.into(),
             kind,
-            _pad: [0; 3],
+            meta: [0; 3],
             a: [0.0; 4],
             b: [0.0; 4],
         }
@@ -50,13 +50,13 @@ impl ShapeInstance {
 
     #[must_use]
     pub fn with_stroke(mut self, group: u32) -> Self {
-        self._pad[0] = group;
+        self.meta[0] = group;
         self
     }
 
     #[must_use]
     pub fn stroke_id(&self) -> u32 {
-        self._pad[0]
+        self.meta[0]
     }
 
     pub fn rect(x: f32, y: f32, width: f32, height: f32, color: impl Into<Color>) -> Self {

@@ -13,7 +13,7 @@ impl Engine {
             self.clear_plugin_tool();
             self.draw.end(&mut self.canvas);
             self.draw.enabled = false;
-            self.plugin_page.draw_enabled = false;
+            self.plugin_page.tools.draw = false;
             #[cfg(debug_assertions)]
             self.disable_test_tools();
             self.canvas.cancel_pan();

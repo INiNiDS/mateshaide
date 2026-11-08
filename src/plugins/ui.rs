@@ -71,6 +71,13 @@ pub enum UiAction {
     PanelButton(String, String),
 }
 
+#[derive(Default, Clone, Copy)]
+pub struct ToolStates {
+    pub draw: bool,
+    pub eraser: bool,
+    pub text: bool,
+}
+
 #[derive(Default)]
 pub struct PluginPage {
     pub open: bool,
@@ -78,9 +85,7 @@ pub struct PluginPage {
     pub scroll: f32,
     pub dialog_scroll: f32,
     pub quick_scroll: f32,
-    pub draw_enabled: bool,
-    pub eraser_enabled: bool,
-    pub text_enabled: bool,
+    pub tools: ToolStates,
 }
 
 #[derive(Debug)]
@@ -439,9 +444,9 @@ impl PluginManager {
             (("Plugins", UiAction::TogglePage), false),
             (("Open", UiAction::Open), false),
             (("Save", UiAction::Save), false),
-            (("Draw", UiAction::ToggleDraw), page.draw_enabled),
-            (("Eraser", UiAction::ToggleEraser), page.eraser_enabled),
-            (("Text", UiAction::ToggleText), page.text_enabled),
+            (("Draw", UiAction::ToggleDraw), page.tools.draw),
+            (("Eraser", UiAction::ToggleEraser), page.tools.eraser),
+            (("Text", UiAction::ToggleText), page.tools.text),
             (("Undo", UiAction::Undo), false),
             (("Redo", UiAction::Redo), false),
             (("-", UiAction::ZoomOut), false),

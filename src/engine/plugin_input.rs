@@ -67,9 +67,9 @@ impl Engine {
     }
 
     pub(crate) fn plugin_frame(&mut self) -> UiFrame {
-        self.plugin_page.draw_enabled = self.draw.enabled;
-        self.plugin_page.eraser_enabled = self.eraser.enabled;
-        self.plugin_page.text_enabled = self.text_tool_selected();
+        self.plugin_page.tools.draw = self.draw.enabled;
+        self.plugin_page.tools.eraser = self.eraser.enabled;
+        self.plugin_page.tools.text = self.text_tool_selected();
         if !self.plugin_page.open && !self.is_capturing() {
             self.plugins.refresh_panels(&self.canvas.camera);
         }
@@ -136,7 +136,7 @@ impl Engine {
             UiAction::Tool(plugin_id, tool_id) => {
                 self.draw.end(&mut self.canvas);
                 self.draw.enabled = false;
-                self.plugin_page.draw_enabled = false;
+                self.plugin_page.tools.draw = false;
 
                 #[cfg(debug_assertions)]
                 self.disable_test_tools();
@@ -202,7 +202,7 @@ impl Engine {
                     self.set_eraser(false);
                 }
                 self.draw.toggle();
-                self.plugin_page.draw_enabled = self.draw.enabled;
+                self.plugin_page.tools.draw = self.draw.enabled;
             }
 
             UiAction::ToggleEraser => {
