@@ -17,19 +17,23 @@ pub struct InkErase {
     pub tolerance: f32,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Press {
+    screen: Vec2,
+    world: Vec2,
+    hit: Option<Hit>,
+    ink: bool,
+    moved: bool,
+    batch: bool,
+    last: Vec2,
+}
+
 #[derive(Debug, Default)]
 pub struct Eraser {
     pub enabled: bool,
     pub hover: Option<Hit>,
-    dragging: bool,
-    batch: bool,
+    press: Option<Press>,
     erased: usize,
-    last: Option<Vec2>,
-    press_screen: Vec2,
-    press_world: Vec2,
-    press_hit: Option<Hit>,
-    press_ink: bool,
-    moved: bool,
     ink: Vec<InkErase>,
 }
 
@@ -51,7 +55,7 @@ type Accepts<'a> = &'a dyn Fn(&PluginNode) -> bool;
 impl Eraser {
     #[must_use]
     pub fn is_dragging(&self) -> bool {
-        self.dragging
+        self.press.is_some()
     }
 
     pub fn take_ink(&mut self) -> Vec<InkErase> {
@@ -85,18 +89,23 @@ impl Eraser {
         let mut out = self.release(canvas);
         let world = canvas.camera.screen_to_world(screen);
 
-        self.batch = canvas.begin_batch();
-        self.dragging = true;
-        self.moved = false;
-        self.erased = 0;
-        self.last = Some(world);
-        self.press_screen = screen;
-        self.press_world = world;
-        self.press_hit = hit::hit_at(canvas, world, registry, Self::tolerance(canvas));
-        self.press_ink = match self.press_hit {
+        let batch = canvas.begin_batch();
+        let hit = hit::hit_at(canvas, world, registry, Self::tolerance(canvas));
+        let ink = match hit {
             Some(Hit::Node(i)) => canvas.plugin_nodes.get(i).is_some_and(accepts),
             _ => false,
         };
+
+        self.erased = 0;
+        self.press = Some(Press {
+            screen,
+            world,
+            hit,
+            ink,
+            moved: false,
+            batch,
+            last: world,
+        });
 
         out.merge(self.update_hover(canvas, registry, world));
         out
@@ -116,22 +125,21 @@ impl Eraser {
         let world = canvas.camera.screen_to_world(screen);
         let mut out = EraseOutcome::default();
 
-        if self.dragging {
+        if let Some(mut press) = self.press {
             tracing::info!(
                 "ERASER drag moved={} dist={}",
-                self.moved,
-                (screen - self.press_screen).length()
+                press.moved,
+                (screen - press.screen).length()
             );
             let mut ink_at: Option<(Vec2, usize)> = None;
 
-            if !self.moved && (screen - self.press_screen).length() > CLICK_SLOP_PX {
-                self.moved = true;
-                let start = self.press_world;
-                out.merge(self.sweep(canvas, registry, start, accepts, &mut ink_at));
+            if !press.moved && (screen - press.screen).length() > CLICK_SLOP_PX {
+                press.moved = true;
+                out.merge(self.sweep(canvas, registry, press.world, accepts, &mut ink_at));
             }
 
-            if self.moved {
-                let from = self.last.unwrap_or(world);
+            if press.moved {
+                let from = press.last;
                 let step = Self::tolerance(canvas).max(0.5);
                 let steps = ((world - from).length() / step)
                     .ceil()
@@ -146,7 +154,8 @@ impl Eraser {
             if let Some((p, i)) = ink_at {
                 self.push_ink(canvas, i, p, false);
             }
-            self.last = Some(world);
+            press.last = world;
+            self.press = Some(press);
         }
 
         out.merge(self.update_hover(canvas, registry, world));
@@ -154,25 +163,20 @@ impl Eraser {
     }
 
     pub fn release(&mut self, canvas: &mut Canvas) -> EraseOutcome {
-        if !self.dragging {
+        let Some(press) = self.press.take() else {
             return EraseOutcome::default();
-        }
+        };
 
         let mut out = EraseOutcome::default();
-        if !self.moved
-            && let Some(hit) = self.press_hit
+        if !press.moved
+            && let Some(hit) = press.hit
         {
-            out = self.erase_click(canvas, hit);
+            out = self.erase_click(canvas, hit, press.ink, press.world);
         }
 
-        self.dragging = false;
-        self.press_hit = None;
-        self.last = None;
-
-        if self.erased == 0 && self.batch {
+        if self.erased == 0 && press.batch {
             canvas.discard_batch();
         }
-        self.batch = false;
         self.erased = 0;
         out
     }
@@ -207,11 +211,15 @@ impl Eraser {
 
         EraseOutcome::default()
     }
-
-    fn erase_click(&mut self, canvas: &mut Canvas, hit: Hit) -> EraseOutcome {
-        if let (true, Hit::Node(i)) = (self.press_ink, hit) {
-            let world = self.press_world;
-            self.push_ink(canvas, i, world, true);
+    fn erase_click(
+        &mut self,
+        canvas: &mut Canvas,
+        hit: Hit,
+        press_ink: bool,
+        press_world: Vec2,
+    ) -> EraseOutcome {
+        if let (true, Hit::Node(i)) = (press_ink, hit) {
+            self.push_ink(canvas, i, press_world, true);
             return EraseOutcome::default();
         }
 
