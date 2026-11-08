@@ -216,20 +216,19 @@ impl App {
         }
         match state {
             ElementState::Pressed
-                if !engine.draw.enabled
-                    && engine.register_canvas_click(input.cursor_position()) =>
-            {
-                engine.create_text_at(input.cursor_position());
-                window.request_redraw();
-            }
+            if !engine.draw.enabled
+                && engine.register_canvas_click(input.cursor_position()) =>
+                {
+                    engine.create_text_at(input.cursor_position());
+                    window.request_redraw();
+                }
             ElementState::Pressed => {
-                engine
-                    .draw
-                    .begin(&mut engine.canvas, input.cursor_position());
+                engine.begin_draw(input.cursor_position());
                 window.request_redraw();
             }
             ElementState::Released => {
                 engine.draw.end(&mut engine.canvas);
+                engine.flush_ink();
                 window.request_redraw();
             }
         }

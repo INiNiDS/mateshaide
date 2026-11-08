@@ -157,10 +157,11 @@ pub(crate) enum UiImageKind {
     CornerWeb = 5,
     Eyes = 6,
     Spider = 7,
+    Logo = 8,
 }
 
 impl UiImageKind {
-    pub(crate) const COUNT: usize = 8;
+    pub(crate) const COUNT: usize = 9;
 }
 
 pub(crate) struct UiImage {

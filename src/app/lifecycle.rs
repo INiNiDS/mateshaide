@@ -61,23 +61,6 @@ impl ApplicationHandler for App {
         pollster::block_on(init);
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let Ok(mut slot) = self.engine.try_borrow_mut() else {
-            return;
-        };
-        let Some(engine) = slot.as_mut() else {
-            return;
-        };
-        let (next, redraw) = engine.plugin_tick();
-        event_loop.set_control_flow(next.map_or(
-            winit::event_loop::ControlFlow::Wait,
-            winit::event_loop::ControlFlow::WaitUntil
-        ));
-        if redraw && let Some(window) = self.window.borrow().as_ref() {
-            window.request_redraw();
-        }
-    }
-
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -107,6 +90,23 @@ impl ApplicationHandler for App {
             self.handle_captured_event(engine, &window, &event);
         } else {
             self.handle_regular_event(engine, &window, &event);
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let Ok(mut slot) = self.engine.try_borrow_mut() else {
+            return;
+        };
+        let Some(engine) = slot.as_mut() else {
+            return;
+        };
+        let (next, redraw) = engine.plugin_tick();
+        event_loop.set_control_flow(next.map_or(
+            winit::event_loop::ControlFlow::Wait,
+            winit::event_loop::ControlFlow::WaitUntil
+        ));
+        if redraw && let Some(window) = self.window.borrow().as_ref() {
+            window.request_redraw();
         }
     }
 }
@@ -241,7 +241,18 @@ fn create_window(event_loop: &ActiveEventLoop) -> Arc<Window> {
     };
 
     #[cfg(not(target_arch = "wasm32"))]
-    let attributes = Window::default_attributes().with_title("MateshaIDE");
+    let attributes = Window::default_attributes()
+        .with_title("MateshaIDE")
+        .with_window_icon(app_icon());
 
     Arc::new(event_loop.create_window(attributes).unwrap())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn app_icon() -> Option<winit::window::Icon> {
+    let image = image::load_from_memory(include_bytes!("../../assets/logo.png"))
+        .ok()?
+        .into_rgba8();
+    let (width, height) = image.dimensions();
+    winit::window::Icon::from_rgba(image.into_raw(), width, height).ok()
 }

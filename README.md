@@ -2,18 +2,7 @@
 
 MateshaIDE is just like an IDE, but for math. If you have ever used an IDE like PyCharm, Visual Studio, Eclipse, etc., you know there are many features that make writing code easier. So MateshaIDE has many features, but for math.
 
-## Video-guide
-
-https://github.com/user-attachments/assets/21d6d7d6-4efe-480f-9897-c7d3fb6f3c54
-
-## Status
-
-I'm still working on it. So far it's more of a coloring book. You can draw but can't write.
-It's about 10% done.
-
-## What's next
-
-After that, I will make a full PluginManager. This is the main feature of MateshaIDE, since the other features are plugins. It's a plugin architecture.
+<!-- You litteraly don't need a video guide with new wiki plugin -->
 
 ## Where I can test
 

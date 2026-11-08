@@ -43,18 +43,65 @@ impl Engine {
         out.redraw
     }
 
+    pub fn begin_draw(&mut self, screen: Vec2) {
+        let world = self.canvas.camera.screen_to_world(screen);
+        let owner = if self.draw.enabled {
+            self.plugins.ink_owner_at(&self.canvas.plugin_nodes, world)
+        } else {
+            None
+        };
+        self.canvas.set_stroke_owner(owner);
+        self.draw.begin(&mut self.canvas, screen);
+    }
+
     pub fn eraser_pressed(&mut self, screen: Vec2) -> bool {
-        let out = self.eraser.press(&mut self.canvas, &self.shapes, screen);
-        self.apply_erase(out)
+        let out = self.eraser.press(&mut self.canvas, &self.shapes, screen, &|n| {
+            self.plugins.accepts_ink(n)
+        });
+        let redraw = self.apply_erase(out);
+        self.flush_ink();
+        redraw
     }
 
     pub fn eraser_moved(&mut self, screen: Vec2) -> bool {
-        let out = self.eraser.moved(&mut self.canvas, &self.shapes, screen);
-        self.apply_erase(out)
+        let out = self.eraser.moved(&mut self.canvas, &self.shapes, screen, &|n| {
+            self.plugins.accepts_ink(n)
+        });
+        let redraw = self.apply_erase(out);
+        self.flush_ink();
+        redraw
     }
 
     pub fn eraser_released(&mut self) {
-        self.eraser.release(&mut self.canvas);
+        let out = self.eraser.release(&mut self.canvas);
+        self.apply_erase(out);
+        self.flush_ink();
+    }
+
+    pub(crate) fn flush_ink(&mut self) {
+        for erase in self.eraser.take_ink() {
+            let event = serde_json::json!({
+                "name": "ink.erase",
+                "node": erase.node,
+                "x": erase.world.x,
+                "y": erase.world.y,
+                "click": erase.click,
+                "tol": erase.tolerance,
+            });
+            self.plugins.dispatch(&erase.plugin, &event, &mut self.canvas);
+        }
+
+        for ink in self.canvas.take_finished_ink() {
+            let points: Vec<f32> = ink.points.iter().flat_map(|p| [p.x, p.y]).collect();
+            let event = serde_json::json!({
+                "name": "ink.stroke",
+                "node": ink.node,
+                "points": points,
+                "width": ink.width,
+                "color": [ink.color.r, ink.color.g, ink.color.b, ink.color.a],
+            });
+            self.plugins.dispatch(&ink.plugin, &event, &mut self.canvas);
+        }
     }
 
     #[must_use]

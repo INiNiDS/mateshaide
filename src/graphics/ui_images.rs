@@ -252,7 +252,7 @@ impl UiImageRenderer {
         }
 
         if !self.loaded {
-            let sources: [(&str, &[u8]); UiImageKind::COUNT] = [
+            let sources: [(&str, &[u8]); 9] = [
                 ("blood.png", include_bytes!("../../assets/blood.png")),
                 ("pumpkin.png", include_bytes!("../../assets/pumpkin.png")),
                 ("strips.png", include_bytes!("../../assets/strips.png")),
@@ -261,6 +261,7 @@ impl UiImageRenderer {
                 ("web2.png", include_bytes!("../../assets/web2.png")),
                 ("eyes.png", include_bytes!("../../assets/eyes.png")),
                 ("spider.png", include_bytes!("../../assets/spider.png")),
+                ("logo.png", include_bytes!("../../assets/logo.png")),
             ];
 
             for (index, (name, bytes)) in sources.into_iter().enumerate() {

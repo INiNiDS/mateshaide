@@ -53,7 +53,7 @@ fn line_distance(shape: &ShapeInstance, p: Vec2) -> f32 {
     (p - (a + ab * t)).length() - shape.b[0]
 }
 
-fn shape_hit(shape: &ShapeInstance, world: Vec2, registry: &ShapeRegistry, tolerance: f32) -> bool {
+pub(crate) fn shape_hit(shape: &ShapeInstance, world: Vec2, registry: &ShapeRegistry, tolerance: f32) -> bool {
     if shape.kind == KIND_LINE {
         return line_distance(shape, world) <= tolerance;
     }

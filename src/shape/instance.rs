@@ -48,6 +48,17 @@ impl ShapeInstance {
         self
     }
 
+    #[must_use]
+    pub fn with_stroke(mut self, group: u32) -> Self {
+        self._pad[0] = group;
+        self
+    }
+
+    #[must_use]
+    pub fn stroke_id(&self) -> u32 {
+        self._pad[0]
+    }
+
     pub fn rect(x: f32, y: f32, width: f32, height: f32, color: impl Into<Color>) -> Self {
         let size = Vec2::new(width, height);
         let center = Vec2::new(x, y) + size * 0.5;
@@ -92,7 +103,7 @@ impl ShapeInstance {
             Vec2::splat(radius * 2.0),
             color,
         )
-        .with_params([radius, 0.0, 0.0, 0.0], [0.0; 4])
+            .with_params([radius, 0.0, 0.0, 0.0], [0.0; 4])
     }
 
     pub fn line(start: Vec2, end: Vec2, radius: f32, color: impl Into<Color>) -> Self {

@@ -425,13 +425,13 @@ impl PluginManager {
         frame.floating_panel(camera, layout.system);
 
         if layout.brand {
-            frame.text(
-                camera,
-                layout.system[0] + PANEL_PAD,
-                layout.system[1] + 16.0,
-                14.0,
-                "MateshaIDE",
-                frame.theme.text,
+            let x = layout.system[0] + PANEL_PAD;
+            let y = layout.system[1];
+            frame.image(
+                super::UiImageKind::Logo,
+                [x, y + 6.0, x + 88.0, y + 42.0],
+                [0.0, 0.0],
+                false,
             );
         }
 

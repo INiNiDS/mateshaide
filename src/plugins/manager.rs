@@ -317,6 +317,34 @@ impl PluginManager {
         self.focus = None;
     }
 
+    #[must_use]
+    pub fn accepts_ink(&self, node: &crate::plugins::PluginNode) -> bool {
+        self.active(&node.owner)
+            && self
+                .entries
+                .get(&node.owner)
+                .is_some_and(|e| e.contributions.ink.contains(&node.object_type))
+    }
+
+    #[must_use]
+    pub fn ink_owner_at(
+        &self,
+        nodes: &[PluginNode],
+        world: glam::Vec2,
+    ) -> Option<(String, String)> {
+        nodes
+            .iter()
+            .rev()
+            .find(|n| {
+                self.accepts_ink(n)
+                    && world.x >= n.x
+                    && world.x <= n.x + n.width
+                    && world.y <= n.y
+                    && world.y >= n.y - n.height
+            })
+            .map(|n| (n.owner.clone(), n.id.clone()))
+    }
+
     pub fn dispatch(&mut self, id: &str, event: &Value, canvas: &mut crate::Canvas) {
         if !self.active(id) {
             return;
@@ -333,7 +361,7 @@ impl PluginManager {
                 let ops = std::mem::take(&mut tx.document_ops);
                 self.commit_nodes(id, canvas, tx.nodes);
                 self.run_document_ops(ops, canvas);
-            },
+            }
             Err(e) => {
                 undo(&mut *self);
                 self.notice = format!("Plugin {id}: transaction rejected: {e:#}");
@@ -477,7 +505,8 @@ impl PluginManager {
     fn prune_render_cache(&mut self, nodes: &[PluginNode]) {
         let live: BTreeSet<String> = nodes.iter().map(|n| format!("render: {}", n.id)).collect();
         for runtime in self.entries.values_mut().filter_map(|e| e.runtime.as_mut()) {
-            runtime.retain_cached(|slot| slot == "overlay" || slot == "panel" || live.contains(slot));
+            runtime
+                .retain_cached(|slot| slot == "overlay" || slot == "panel" || live.contains(slot));
         }
     }
 
@@ -543,7 +572,7 @@ impl PluginManager {
             "overlay",
             &[json_value(&context).unwrap_or(Value::Null)],
             true,
-            || Ok(())
+            || Ok(()),
         )?;
         scene.extend_primitives(&out)?;
         Ok(())

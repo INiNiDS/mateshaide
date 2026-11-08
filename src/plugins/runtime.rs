@@ -83,6 +83,8 @@ pub struct Contributions {
     #[serde(default)]
     pub object_types: Vec<String>,
     #[serde(default)]
+    pub ink: Vec<String>,
+    #[serde(default)]
     pub commands: Vec<Command>,
 }
 
@@ -204,6 +206,7 @@ impl Runtime {
         validate_limits(&contributions)?;
         validate_ids(&contributions)?;
         validate_labels(&contributions)?;
+        validate_ink(&contributions)?;
         self.require_callbacks(&contributions)?;
 
         Ok(contributions)
@@ -279,6 +282,17 @@ fn validate_ids(contributions: &Contributions) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn validate_ink(contributions: &Contributions) -> Result<()> {
+    ensure!(
+        contributions
+            .ink
+            .iter()
+            .all(|kind| contributions.object_types.contains(kind)),
+        "ink objects must also be declared in object_types"
+    );
     Ok(())
 }
 

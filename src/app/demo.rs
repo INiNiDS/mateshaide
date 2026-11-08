@@ -11,7 +11,7 @@ MateshaIDE: controls
 DRAWING
   Ctrl+9              toggle draw mode
   LMB + drag          draw (when draw mode is on)
-  E                   toggle eraser; LMB / 1 removes a shape
+  E                   toggle eraser; click removes an object, drag erases strokes
 
 HISTORY
   Ctrl+Z              undo
