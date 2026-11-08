@@ -85,13 +85,3 @@ jobs:
           ref: refs/tags/${{ needs.release-plz-release.outputs.tag }}
           include: plugins,README.md
           token: ${{ secrets.GITHUB_TOKEN }}
-
-  pages:
-    name: Deploy site
-    needs: release-plz-release
-    if: needs.release-plz-release.outputs.releases_created == 'true'
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/deploy.yml
